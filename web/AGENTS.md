@@ -25,3 +25,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `login`인데 로그인 폼을 못 찾으면 400 `{detail}` — 메시지를 보여주고 고급 옵션으로 안내한다.
 - 미리보기·수정 화면은 scene의 `video`·`highlight`·`kicker`(계약 합의 후 생김)를 지우지 않고 그대로 보낸다.
 - 아키텍처 장면이 노드 2개 미만이면 보기 흉하다 — 빼거나 서비스 흐름 표로 바꾸는 것은 C가 판단.
+- `GET /api/runs/{id}`에 `warning`이 있으면(예: 사이트가 응답하지 않아 화면 없이 만든 영상) 미리보기 위에 눈에 띄게 보여준다.
