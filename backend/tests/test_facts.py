@@ -163,3 +163,17 @@ def test_markdown_h1_inside_code_fence_is_ignored():
 
     name, _ = _name_and_summary("intro text\n\n```sh\n# install\nnpm i\n```\n", "fallback")
     assert name == "fallback"
+
+
+def test_summary_strips_markdown_emphasis():
+    from app.analyze.facts import _name_and_summary
+
+    _, summary = _name_and_summary("# 안정형\n\n**내 상황에 맞는 _안전_ 자산 관리**\n", "x")
+    assert summary == "내 상황에 맞는 안전 자산 관리"
+
+
+def test_summary_keeps_snake_case_and_math():
+    from app.analyze.facts import _name_and_summary
+
+    _, summary = _name_and_summary("# A\n\nuse snake_case_names and 2*3*4 math\n", "x")
+    assert summary == "use snake_case_names and 2*3*4 math"

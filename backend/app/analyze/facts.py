@@ -67,6 +67,8 @@ def _readme(snap: RepoSnapshot) -> str:
 
 _H1 = re.compile(r"^#\s+(.+)|^\s*<h1[^>]*>(.*?)</h1>", re.IGNORECASE)
 _MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+# 강조 기호는 단어 밖에서만 (snake_case_names·2*3*4 는 그대로)
+_MD_EMPHASIS = re.compile(r"(?<![\w*])(\*\*|__|\*|_)(\S(?:.*?\S)?)\1(?![\w*])")
 
 
 def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
@@ -92,7 +94,10 @@ def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
             if para:
                 break
             continue
-        para.append(_MD_LINK.sub(r"\1", line.strip().removeprefix(">").strip()))
+        text = _MD_LINK.sub(r"\1", line.strip().removeprefix(">").strip())
+        while (plain := _MD_EMPHASIS.sub(r"\2", text)) != text:  # **…_…_…** 겹친 강조
+            text = plain
+        para.append(text)
     return name, " ".join(para)[:SUMMARY_LIMIT]
 
 
