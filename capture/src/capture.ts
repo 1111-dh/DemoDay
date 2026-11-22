@@ -38,19 +38,18 @@ async function enableFlutterSemantics(page: Page) {
   await page.locator("flt-semantics-placeholder").first().dispatchEvent("click", undefined, { timeout: 1000 }).catch(() => {});
 }
 
-/** 입력값이 보이지 않게 지금까지 type한 입력칸을 모두 가리고 찍는다. 실패해도 마스크 없이 다시 찍지 않는다. */
-async function snap(page: Page, path: string, typed: Locator[]) {
-  const opts = { path, mask: typed, maskColor: "#d1d5db" };
-  await page.screenshot({ ...opts, timeout: STEP_TIMEOUT }).catch(() => page.screenshot(opts));
+/** 실패하면 기본 타임아웃으로 한 번 더 찍는다. */
+async function snap(page: Page, path: string) {
+  await page.screenshot({ path, timeout: STEP_TIMEOUT }).catch(() => page.screenshot({ path }));
 }
 
 /**
  * 단계를 실행하고 클릭 좌표를 돌려준다. 실패하면 throw.
  * click은 좌표가 클릭 전 화면 기준이므로 클릭 직전에 찍는다(taken). 클릭 결과는 다음 단계 화면에 나온다.
  * shotPath가 null이면(auth 단계) 찍지 않는다.
- * typed: 실행 내내 공유하는 입력칸 목록. type 단계가 채우기 전에 추가하고, 이후 모든 스크린샷이 가린다.
+ * 일반 단계 입력값은 가리지 않는다(LLM이 만든 데모 문구). auth 값은 찍지도 로그에 쓰지도 않는다.
  */
-async function run(page: Page, baseUrl: string, step: Step, shotPath: string | null, typed: Locator[]) {
+async function run(page: Page, baseUrl: string, step: Step, shotPath: string | null) {
   const loc = step.selector ? page.locator(step.selector).first() : null;
   switch (step.action) {
     case "goto": {
@@ -64,14 +63,13 @@ async function run(page: Page, baseUrl: string, step: Step, shotPath: string | n
       // trial: 클릭 없이 스크롤·actionability만 확인. 리렌더로 요소가 바뀌어도 재시도한다(scrollIntoViewIfNeeded는 안 함)
       await loc!.click({ trial: true });
       const click = await center(loc!);
-      if (shotPath) await snap(page, shotPath, typed);
+      if (shotPath) await snap(page, shotPath);
       await loc!.click();
       return { click, taken: true };
     }
     case "type": {
       await loc!.click({ trial: true });
       const click = await center(loc!);
-      typed.push(loc!); // fill이 중간에 실패해도 fallback 화면에서 가려지도록 먼저 넣는다
       await loc!.fill(step.value!);
       return { click };
     }
@@ -98,19 +96,18 @@ async function main(scenarioPath: string, runDir: string) {
 
     // 로그인: 같은 컨텍스트에서 먼저 실행(쿠키·localStorage 유지). 찍지 않고, 값·URL·에러 메시지를 로그에 쓰지 않는다.
     for (const step of scenario.auth?.steps ?? []) {
-      await run(page, scenario.baseUrl, step, null, []).catch(() => console.warn(`! auth step ${step.id} (${step.action}) 실패 — 건너뜀`));
+      await run(page, scenario.baseUrl, step, null).catch(() => console.warn(`! auth step ${step.id} (${step.action}) 실패 — 건너뜀`));
     }
     if (scenario.auth) await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
 
     const start = Date.now();
-    const typed: Locator[] = [];
 
     for (const step of scenario.steps) {
       const image = `shots/${step.id}.png`;
       let shot: Shot;
       let taken = false;
       try {
-        const r = await run(page, scenario.baseUrl, step, join(runDir, image), typed);
+        const r = await run(page, scenario.baseUrl, step, join(runDir, image));
         taken = r.taken ?? false;
         // 클릭·이동 후 화면이 안정될 때까지 잠깐 기다린다(실패해도 무시)
         await page.waitForLoadState("networkidle", { timeout: 2000 }).catch(() => {});
@@ -119,7 +116,7 @@ async function main(scenarioPath: string, runDir: string) {
         console.warn(`! step ${step.id} (${step.action}) fallback: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
         shot = { stepId: step.id, image, click: null, status: "fallback", atMs: Date.now() - start };
       }
-      if (!taken) await snap(page, join(runDir, image), typed);
+      if (!taken) await snap(page, join(runDir, image));
       shots.push(shot);
       console.log(`${shot.status === "ok" ? "✓" : "!"} ${image}`);
     }
