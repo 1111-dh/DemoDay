@@ -42,6 +42,8 @@ def write_status(rid: str, **fields: object) -> dict:
     }
     if status.get("stage") != "error":
         status.pop("error", None)
+    if status.get("warning") is None:  # warning=None 으로 지운다
+        status.pop("warning", None)
     write_json(run_dir(rid) / "status.json", status)
     return status
 

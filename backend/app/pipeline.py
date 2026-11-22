@@ -59,11 +59,26 @@ def run_render(run_dir: Path) -> None:
     )
 
 
+EMPTY_CAPTURE = {"viewport": {"w": 1280, "h": 720}, "shots": []}
+
+
+def _capture_or_empty(rid: str, d: Path) -> None:
+    """캡처가 통째로 실패해도(사이트 응답 없음 등) 영상은 나오게 — 카드·아키텍처로만."""
+    try:
+        run_capture(d)
+    except Exception as e:
+        log.warning("캡처 실패 %s — 화면 없이 계속: %s", rid, e)
+        runs.write_json(d / "capture.json", EMPTY_CAPTURE)
+        msg = str(e).splitlines()[0] if str(e) else type(e).__name__
+        hint = "실제 화면 없이 만들었어요. 사이트가 열리는지 확인하세요."
+        runs.write_status(rid, warning=f"{msg} — {hint}")
+
+
 def build(rid: str, total_sec: float, include_architecture: bool) -> None:
     try:
         d = runs.run_dir(rid)
-        runs.write_status(rid, stage="capturing")
-        run_capture(d)
+        runs.write_status(rid, stage="capturing", warning=None)
+        _capture_or_empty(rid, d)
         runs.write_status(rid, stage="scening")
         build_scene(d, total_sec, include_architecture, llm.get_llm())
         runs.write_status(rid, stage="rendering")

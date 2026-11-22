@@ -116,7 +116,7 @@ def test_build_flow_sets_done(client):
     assert client.get(run["videoUrl"]).content == b"mp4"
 
 
-def test_build_error_sets_error_stage(client, monkeypatch):
+def test_capture_failure_still_makes_video(client, monkeypatch):  # 실패해도 영상은 나와야 한다
     def boom(run_dir):
         raise RuntimeError("캡처 실패: timeout")
 
@@ -124,7 +124,35 @@ def test_build_error_sets_error_stage(client, monkeypatch):
     rid = create(client)["id"]
     client.post(f"/api/runs/{rid}/build", json={})
     run = client.get(f"/api/runs/{rid}").json()
-    assert (run["stage"], run["error"]) == ("error", "캡처 실패: timeout")
+    assert run["stage"] == "done" and "error" not in run
+    assert "캡처 실패" in run["warning"]
+    assert all(s["type"] != "screen" for s in run["scene"]["scenes"])
+    assert run["videoUrl"] == f"/api/runs/{rid}/files/preview.mp4"
+
+
+def test_warning_cleared_on_next_build(client, monkeypatch):
+    real = pipeline.run_capture
+
+    def boom(run_dir):
+        raise RuntimeError("캡처 실패: timeout")
+
+    monkeypatch.setattr(pipeline, "run_capture", boom)
+    rid = create(client)["id"]
+    client.post(f"/api/runs/{rid}/build", json={})
+    monkeypatch.setattr(pipeline, "run_capture", real)
+    client.post(f"/api/runs/{rid}/build", json={})
+    assert "warning" not in client.get(f"/api/runs/{rid}").json()
+
+
+def test_render_failure_sets_error_stage(client, monkeypatch):
+    def boom(run_dir):
+        raise RuntimeError("렌더 실패: oom")
+
+    monkeypatch.setattr(pipeline, "run_render", boom)
+    rid = create(client)["id"]
+    client.post(f"/api/runs/{rid}/build", json={})
+    run = client.get(f"/api/runs/{rid}").json()
+    assert (run["stage"], run["error"]) == ("error", "렌더 실패: oom")
 
 
 def test_put_scene_rerenders(client):
