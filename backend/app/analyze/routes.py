@@ -1,7 +1,7 @@
 """앱 루트·프레임워크 탐지와 라우트 추출 진입점(routes_for).
 
-- 파일 기반: Next.js(app·pages), Nuxt(pages/) — 이 파일
-- 코드 기반: React Router · Vue Router — code_routes.py
+- 파일 기반: Next.js(app·pages), Nuxt(pages/), SvelteKit(src/routes/) — 이 파일
+- 코드 기반: React Router · Vue Router — code_routes.py, Flutter — flutter.py
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Literal
 
 from app.github import RepoSnapshot
 
-Framework = Literal["next-app", "next-pages", "nuxt", "react", "vue"]
+Framework = Literal["next-app", "next-pages", "nuxt", "sveltekit", "react", "vue", "flutter"]
 _JS_PAGE = r"\.(?:tsx|jsx|ts|js)$"
 
 
@@ -65,6 +65,34 @@ def _nuxt_files(paths: list[str], base: str) -> list[tuple[str, str]]:
     return _matches(paths, base, r"^(?:src/|app/)?pages/(.*)\.vue$")
 
 
+def _svelte_files(paths: list[str], base: str) -> list[tuple[str, str]]:
+    return _matches(paths, base, r"^src/routes/((?:.*/)?)\+page\.svelte$")
+
+
+def pubspec_deps(text: str) -> dict[str, str] | None:
+    """pubspec.yaml 의 dependencies 이름들. Flutter 앱(sdk: flutter)이 아니면 None.
+
+    `sdk: flutter` 로 붙는 SDK 패키지(flutter 등)는 스택에서 뺀다.
+    """
+    deps: dict[str, str] = {}
+    section, current, flutter = False, None, False
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith(" "):
+            section = line.split(":", 1)[0].strip() == "dependencies"
+            continue
+        if not section:
+            continue
+        if m := re.match(r"^  ([\w-]+)\s*:\s*(.*)$", line):
+            current = m.group(1)
+            deps[current] = m.group(2).strip()
+        elif current and re.match(r"^\s{4,}sdk\s*:\s*flutter", line):
+            flutter = flutter or current == "flutter"
+            deps.pop(current, None)
+    return deps if flutter else None
+
+
 def _candidate(base: str, package: dict, paths: list[str]) -> tuple[int, int, AppRoot] | None:
     """(우선순위, 크기, AppRoot). 메타 프레임워크가 라이브러리보다 우선."""
     deps = _deps(package)
@@ -74,6 +102,8 @@ def _candidate(base: str, package: dict, paths: list[str]) -> tuple[int, int, Ap
         return 1, len(app_files or _pages_router_files(paths, base)), AppRoot(base, fw, package)
     if "nuxt" in deps:
         return 1, len(_nuxt_files(paths, base)), AppRoot(base, "nuxt", package)
+    if "@sveltejs/kit" in deps:
+        return 1, len(_svelte_files(paths, base)), AppRoot(base, "sveltekit", package)
     for lib in ("react", "vue"):
         if lib in deps:
             size = sum(1 for p in paths if _rel(p, base) is not None)
@@ -81,11 +111,20 @@ def _candidate(base: str, package: dict, paths: list[str]) -> tuple[int, int, Ap
     return None
 
 
+def paths_in(snap: RepoSnapshot, base: str) -> list[str]:
+    return [p for p in snap.paths if _rel(p, base) is not None]
+
+
 def find_app_root(snap: RepoSnapshot) -> AppRoot | None:
     candidates: list[tuple[int, int, AppRoot]] = []
     for path, text in snap.files.items():
         name = path.rsplit("/", 1)[-1]
         base = path.rsplit("/", 1)[0] if "/" in path else ""
+        if name == "pubspec.yaml":
+            if (deps := pubspec_deps(text)) is not None:
+                size = sum(1 for p in paths_in(snap, base) if p.endswith(".dart"))
+                candidates.append((0, size, AppRoot(base, "flutter", {"dependencies": deps})))
+            continue
         if name != "package.json":
             continue
         try:
@@ -145,11 +184,25 @@ def nuxt_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
     return sort_routes(list(routes.values()))
 
 
+def sveltekit_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
+    """src/routes/**/+page.svelte. (group) 제거, [slug]·[...rest]·[[opt]] 는 동적."""
+    routes: dict[str, Route] = {}
+    for file, sub in _svelte_files(snap.paths, root.dir):
+        path = "/" + "/".join(s for s in sub.split("/") if s and not _is_group(s))
+        routes.setdefault(path, Route(path, "[" in path, file))
+    return sort_routes(list(routes.values()))
+
+
 def routes_for(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
     from app.analyze.code_routes import code_routes
+    from app.analyze.flutter import flutter_routes
 
     if root.framework in ("next-app", "next-pages"):
         return next_routes(snap, root)
     if root.framework == "nuxt":
         return nuxt_routes(snap, root)
+    if root.framework == "sveltekit":
+        return sveltekit_routes(snap, root)
+    if root.framework == "flutter":
+        return flutter_routes(snap, root)
     return code_routes(snap, root)

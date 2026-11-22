@@ -7,6 +7,7 @@
   - 클릭·입력까지: React Router(`lazy` import 포함) · Next.js `pages`/`app` · Vue Router · Nuxt `pages/` · SvelteKit `src/routes/`
   - 페이지 이동만: Flutter web(go_router · `MaterialApp.routes`) — canvas 렌더라 셀렉터가 없다
   - 그 외(Angular·백엔드 전용 등)는 `/` 1단계 기본값
+  - UI 요소는 페이지 파일에서 import(재export 묶음은 가져온 이름만)·Nuxt 자동 import 컴포넌트를 따라가며 리터럴 문구만 모은다. `…Button`·`…Link`·`…Field` 디자인 시스템 컴포넌트와 react-hook-form `register('x')`도 인식. Flutter는 `usePathUrlStrategy`가 없으면 `/#/x` 해시 URL.
 - 캡처·렌더는 subprocess로 호출한다: `pnpm --filter @demoday/capture capture <scenario> <runDir>`, `pnpm --filter @demoday/render render <runDir> <out.mp4>`.
 
 ## LLM 출력 규칙

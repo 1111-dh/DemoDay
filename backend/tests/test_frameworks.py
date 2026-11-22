@@ -239,3 +239,136 @@ def test_barrel_follows_only_imported_names():
     snap = make_snap(files, loader=files.get)
     page = next(p for p in build_facts(snap).pages if p.path == "/signup")
     assert [e.selector for e in page.elements] == ["text=가입하기", "text=처음으로"]
+
+
+# ── 3. SvelteKit · Flutter ──────────────────────────────────────────
+
+
+def test_sveltekit_routes():
+    snap = make_snap(
+        {"package.json": pkg(dev={"@sveltejs/kit": "2", "svelte": "5"})},
+        extra_paths=[
+            "src/routes/+page.svelte",
+            "src/routes/+layout.svelte",
+            "src/routes/about/+page.svelte",
+            "src/routes/(app)/dashboard/+page.svelte",
+            "src/routes/blog/[slug]/+page.svelte",
+            "src/routes/api/items/+server.ts",
+        ],
+    )
+    assert find_app_root(snap).framework == "sveltekit"
+    assert paths_files(snap) == [
+        ("/", False, "src/routes/+page.svelte"),
+        ("/about", False, "src/routes/about/+page.svelte"),
+        ("/dashboard", False, "src/routes/(app)/dashboard/+page.svelte"),
+        ("/blog/[slug]", True, "src/routes/blog/[slug]/+page.svelte"),
+    ]
+
+
+def test_svelte_elements():
+    src = """
+    <button on:click={() => count++}>더하기</button>
+    <a href="/about">소개</a>
+    <input bind:value={q} placeholder="검색" />
+    """
+    assert [e.selector for e in extract_elements(src)] == [
+        "text=더하기",
+        "text=소개",
+        'input[placeholder="검색"]',
+    ]
+
+
+PUBSPEC = """
+name: safe_app
+dependencies:
+  flutter:
+    sdk: flutter
+  go_router: ^14.0.0
+  firebase_core: ^3.0.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+"""
+
+GO_ROUTER = """
+import 'package:go_router/go_router.dart';
+class AppRoutes {
+  static const home = '/';
+  static const login = '/login';
+  static const result = '/result';
+}
+final appRouter = GoRouter(
+  routes: [
+    GoRoute(path: AppRoutes.home, builder: (c, s) => const HomeScreen(), routes: [
+      GoRoute(path: 'detail/:id', builder: (c, s) => const DetailScreen()),
+      GoRoute(path: 'settings', builder: (c, s) => const SettingsScreen()),
+    ]),
+    ShellRoute(builder: (c, s, child) => Shell(child: child), routes: [
+      GoRoute(path: '/profile', builder: (c, s) => const ProfileScreen()),
+    ]),
+    GoRoute(path: AppRoutes.result, builder: (c, s) => const ResultScreen()),
+  ],
+);
+"""
+
+
+def flutter_snap(main_dart: str):
+    files = {
+        "frontend/pubspec.yaml": PUBSPEC,
+        "frontend/lib/router/app_router.dart": GO_ROUTER,
+        "frontend/lib/main.dart": main_dart,
+    }
+    return make_snap(files, extra_paths=["frontend/lib/screens/home.dart"])
+
+
+def test_flutter_go_router_hash_urls_by_default():
+    snap = flutter_snap("void main() { runApp(const App()); }")
+    root = find_app_root(snap)
+    assert (root.dir, root.framework) == ("frontend", "flutter")
+    assert [(p, d) for p, d, _ in paths_files(snap)] == [
+        ("/", False),
+        ("/#/profile", False),
+        ("/#/result", False),
+        ("/#/settings", False),
+        ("/#/detail/:id", True),
+    ]
+    facts = build_facts(snap)
+    assert "go_router" in facts.stack and "flutter" not in facts.stack
+    assert all(p.elements == [] for p in facts.pages)  # canvas 렌더 — 셀렉터 없음
+
+
+def test_flutter_path_url_strategy():
+    snap = flutter_snap("void main() { usePathUrlStrategy(); runApp(const App()); }")
+    assert [p for p, _, _ in paths_files(snap)][:3] == ["/", "/profile", "/result"]
+
+
+def test_flutter_material_routes_map():
+    files = {
+        "pubspec.yaml": PUBSPEC,
+        "lib/main.dart": """
+          void main() { setUrlStrategy(PathUrlStrategy()); runApp(MaterialApp(
+            routes: {
+              '/': (context) => const Home(),
+              '/about': (context) => const About(),
+            },
+          )); }
+        """,
+    }
+    assert [p for p, _, _ in paths_files(make_snap(files))] == ["/", "/about"]
+
+
+def test_nuxt_auto_imported_components():
+    files = {
+        "package.json": pkg({"nuxt": "4"}),
+        "app/pages/index.vue": (
+            "<template><MediaHero /><lazy-carousel-base /><IconNuxt /></template>"
+        ),
+        "app/components/media/Hero.vue": "<template><button>재생</button></template>",
+        "app/components/carousel/Base.vue": (
+            '<template><NuxtLink to="/x">더 보기</NuxtLink></template>'
+        ),
+        "app/components/icon/IconNuxt.vue": "<template><a href='/'>로고</a></template>",
+    }
+    snap = make_snap(files, loader=files.get)
+    home = build_facts(snap).pages[0]
+    assert [e.selector for e in home.elements] == ["text=재생", "text=더 보기", "text=로고"]
