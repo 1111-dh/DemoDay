@@ -286,6 +286,8 @@ def _danger_facts():
         Element("button", "Sign out", "text=Sign out"),
         Element("button", "결제하기", "text=결제하기"),
         Element("button", "추천받기", 'role=button[name="추천받기"]'),
+        Element("button", "다시 시도", 'role=button[name="다시 시도"]'),
+        Element("button", "Retry", "text=Retry"),
     ]
     return facts(pages=[PageFacts("/", False, "app/page.tsx", els)])
 
@@ -294,7 +296,15 @@ def test_dangerous_buttons_hidden_from_llm():  # 로그아웃·삭제·탈퇴·�
     llm = FakeLLM(None, None, None)
     build_scenario(_danger_facts(), BASE, llm)
     shown = llm.users[0]
-    for word in ["로그아웃", "회원 탈퇴", "text=삭제", "Sign out", "결제하기"]:
+    for word in [
+        "로그아웃",
+        "회원 탈퇴",
+        "text=삭제",
+        "Sign out",
+        "결제하기",
+        "다시 시도",
+        "Retry",
+    ]:
         assert word not in shown, word
     assert "추천받기" in shown
 
