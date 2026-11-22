@@ -37,7 +37,12 @@ def test_login_steps_from_form():
                 "value": "p",
                 "caption": "비밀번호",
             },
-            {"id": 4, "action": "click", "selector": "text=로그인", "caption": "로그인"},
+            {
+                "id": 4,
+                "action": "click",
+                "selector": 'button:text-is("로그인")',
+                "caption": "로그인",
+            },
         ]
     }
     probe = {"baseUrl": "https://x.dev", "auth": auth, "steps": [auth["steps"][0]]}
@@ -87,7 +92,7 @@ def test_login_steps_skips_social_buttons():  # 최종 리뷰 #2
             Element("button", "Sign in with Google", "text=Sign in with Google"),
         ],
     )
-    assert login_steps(_facts(page), "u", "p")["steps"][3]["selector"] == "text=로그인"
+    assert login_steps(_facts(page), "u", "p")["steps"][3]["selector"] == 'button:text-is("로그인")'
 
 
 def test_login_steps_none_when_only_social_submit():
@@ -115,7 +120,7 @@ PASSWORD = Element("input", "password", "input[name=password]")
 def test_with_email_button_is_not_social():  # PR #10 리뷰 (B)
     button = Element("button", "Sign in with email", "text=Sign in with email")
     steps = login_steps(_facts(_page("/login", EMAIL, PASSWORD, button)), "u", "p")["steps"]
-    assert steps[3]["selector"] == "text=Sign in with email"
+    assert steps[3]["selector"] == 'button:text-is("Sign in with email")'
 
 
 def test_no_password_field_is_none():  # 추측하지 않고 400으로 알린다
@@ -133,3 +138,15 @@ def test_dynamic_login_page_is_skipped():
     login = Element("button", "로그인", "text=로그인")
     page = _page("/[locale]/login", EMAIL, PASSWORD, login, dynamic=True)
     assert login_steps(_facts(page), "u", "p") is None
+
+
+def test_flutter_submit_keeps_role_selector():  # role 셀렉터는 이미 버튼만 가리킨다
+    page = _page(
+        "/#/login",
+        Element("input", "아이디", 'role=textbox[name="아이디"]'),
+        Element("input", "비밀번호", 'role=textbox[name="비밀번호"]'),
+        Element("button", "로그인", 'role=button[name="로그인"]'),
+    )
+    assert (
+        login_steps(_facts(page), "u", "p")["steps"][3]["selector"] == 'role=button[name="로그인"]'
+    )
