@@ -23,7 +23,7 @@
 
 | 메서드 | 경로 | 요청 | 응답 |
 |---|---|---|---|
-| POST | `/api/runs` | `{repo, url, totalSec?=60, auth?}` | `{id, scenario}` — 분석은 동기(캐시면 즉시). 잘못된 레포 → 400 `{detail: "메시지"}`, 잘못된 `auth` → 422 |
+| POST | `/api/runs` | `{repo, url, totalSec?=60, prompt?(≤500자), login?: {username, password} \| auth?}` | `{id, scenario}` — 분석은 동기(캐시면 즉시). 잘못된 레포 → 400 `{detail: "메시지"}`, 잘못된 `auth`·`login`과 `auth` 동시·긴 `prompt` → 422, `login`인데 로그인 폼 없음 → 400 |
 | PUT | `/api/runs/{id}/scenario` | Scenario JSON | `{ok: true}`. 스키마 위반 → 422 `{detail: [에러…]}` |
 | POST | `/api/runs/{id}/build` | `{includeArchitecture?=true, totalSec?}` | `{id, stage: "queued"}` — 백그라운드로 capture → scene → render |
 | GET | `/api/runs/{id}` | — | `{id, stage, error?, updatedAt, repo, url, totalSec, scenario?, scene?, videoUrl?}` |
@@ -33,3 +33,5 @@
 - `stage`: `created` → `analyzed` → (`queued` → `capturing` → `scening` → `rendering` → `done`) / 실패 시 `error` + `error` 메시지. 웹은 `done`·`error`가 될 때까지 `GET /api/runs/{id}`를 폴링한다(1~2초).
 - scene 안의 이미지 경로(`shots/2.png`)는 `/api/runs/{id}/files/` 뒤에 붙여 쓴다. 없는 run id → 404.
 - `auth`(캡처 전 로그인, `{steps: Step[]}`)는 run 디렉터리의 scenario.json에만 실제 값으로 저장하고 LLM·캐시에는 넣지 않는다. 응답의 scenario에서는 `value`와 경로의 쿼리가 `***`로 가려진다. 가린 채로 `PUT /scenario`하면 저장된 값을 유지하고, 바꾸려면 새 값을 보낸다. CLI·e2e는 `--auth <file>` / `make e2e … AUTH=<file>`.
+- `login`(테스트 계정)이면 A가 분석 결과의 로그인 페이지(경로 `login`/`signin`, 입력칸 2개 이상 + 버튼)에서 auth 단계(goto → type 아이디 → type 비밀번호 → click)를 만든다(`app/login.py`). 저장·가림 규칙은 `auth`와 같다. 소셜 로그인만 있어 폼을 못 찾으면 400 — 웹은 로그인 URL을 `auth`로 받는 고급 옵션을 안내한다.
+- `prompt`(영상에 바라는 점)는 시나리오 LLM에는 화면 순서, scene LLM에는 자막 말투·강조로만 "사용자 요청(참고)" 블록(`app/prompts/reference.md`)에 넣는다. 규칙·grounding을 못 뒤집는다. run 디렉터리 `prompt.txt`에 남고 시나리오 캐시 키에 들어간다. CLI·e2e는 `--prompt` / `make e2e … PROMPT="…"`.

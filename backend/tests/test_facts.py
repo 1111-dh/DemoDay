@@ -106,3 +106,39 @@ def test_react_router_nested_paths_join_parents():
         "/workspaces/:id/dashboard",
         "/workspaces/:id/meetings/upload",
     ]
+
+
+def test_readme_body_strips_markup_and_limits():
+    from app.analyze.facts import README_LIMIT, readme_body
+
+    readme = (
+        '<div align="center">\n<img src="x.png" />\n\n# 안정형\n\n'
+        "[![Flutter](https://img.shields.io/x)](f)\n\n**내 상황에 맞는 자산관리**\n\n"
+        "## 서비스 소개\n회의록을 손으로 옮기는 일은 PM의 몫입니다.\n" + "가" * 3000
+    )
+    body = readme_body(readme)
+    assert "서비스 소개" in body and "PM의 몫" in body
+    assert "<img" not in body and "img.shields.io" not in body
+    assert len(body) <= README_LIMIT == 2000
+
+
+def test_build_facts_keeps_readme(demo_like_snap):
+    assert "레포를 넣으면 데모 영상을 만든다." in build_facts(demo_like_snap).readme
+
+
+def test_from_json_without_readme_field():  # 이전 run 의 facts.json
+    import json
+    from dataclasses import asdict
+
+    d = asdict(RepoFacts("n", "s", [], None, None, []))
+    d.pop("readme")
+    assert RepoFacts.from_json(json.dumps(d)).readme == ""
+
+
+def test_readme_body_tilde_fence_and_inline_html():  # PR #10 리뷰 (B)
+    from app.analyze.facts import readme_body
+
+    body = readme_body(
+        '<p align="center">핵심 문장</p>\n<img src="a.png" />\n~~~bash\nnpm i\n~~~\n본문\n'
+    )
+    assert body == "핵심 문장\n본문"

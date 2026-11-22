@@ -12,6 +12,7 @@ from app.analyze.routes import AppRoot, Route, _deps, find_app_root, routes_for
 from app.github import RepoSnapshot
 
 SUMMARY_LIMIT = 300
+README_LIMIT = 2000  # 이야기(문제·해결) 근거로 LLM에 넘기는 README 본문 상한
 MAX_ELEMENTS = 15
 FOLLOW_FILES = 12  # 페이지 하나에서 따라갈 컴포넌트 파일 수
 FOLLOW_DEPTH = 4  # 페이지 → (재export index) → 위젯 → 하위 컴포넌트
@@ -38,6 +39,7 @@ class RepoFacts:
     app_dir: str | None
     framework: str | None
     pages: list[PageFacts] = field(default_factory=list)
+    readme: str = ""  # README 본문(마크업 제거, README_LIMIT 자)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, indent=2)
@@ -45,6 +47,7 @@ class RepoFacts:
     @classmethod
     def from_json(cls, text: str) -> RepoFacts:
         d = json.loads(text)
+        d.setdefault("readme", "")  # 이전 run 의 facts.json
         d["pages"] = [
             PageFacts(**{**p, "elements": [Element(**e) for e in p["elements"]]})
             for p in d["pages"]
@@ -78,6 +81,31 @@ def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
             continue
         para.append(line.strip())
     return name, " ".join(para)[:SUMMARY_LIMIT]
+
+
+_BADGE = re.compile(r"^\s*(?:\[!\[|!\[)")
+_FENCE = re.compile(r"^\s*(?:```|~~~)")
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def readme_body(readme: str) -> str:
+    """HTML 태그·이미지·배지·코드 블록(``` ~~~)을 뺀 README 본문 (README_LIMIT 자)."""
+    out: list[str] = []
+    fenced = False
+    for line in readme.splitlines():
+        if _FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced or _BADGE.match(line):
+            continue
+        text = _HTML_TAG.sub("", line)  # <p align=center>핵심 문장</p> → 핵심 문장
+        if line.strip() and not text.strip():
+            continue  # 태그만 있던 줄(<img>, </div>)은 빈 줄로도 남기지 않는다
+        line = text
+        if not line.strip() and (not out or not out[-1].strip()):
+            continue
+        out.append(line.rstrip())
+    return "\n".join(out).strip()[:README_LIMIT]
 
 
 _COMPONENT_DIRS = ("components/", "app/components/", "src/components/")
@@ -190,13 +218,15 @@ def _elements(
 
 
 def build_facts(snap: RepoSnapshot) -> RepoFacts:
-    name, summary = _name_and_summary(_readme(snap), snap.repo)
+    text = _readme(snap)
+    name, summary = _name_and_summary(text, snap.repo)
+    readme = readme_body(text)
     root = find_app_root(snap)
     if root is None:
-        return RepoFacts(name, summary, [], None, None, [])
+        return RepoFacts(name, summary, [], None, None, [], readme)
     routes = routes_for(snap, root)
     files = frozenset(r.file for r in routes if r.resolved)
     pages = [PageFacts(r.path, r.dynamic, r.file, _elements(snap, r, root, files)) for r in routes]
     snap.save()  # 분석 중 더 받은 컴포넌트 파일까지 캐시
     stack = sorted(_deps(root.package))
-    return RepoFacts(name, summary, stack, root.dir, root.framework, pages)
+    return RepoFacts(name, summary, stack, root.dir, root.framework, pages, readme)

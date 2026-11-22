@@ -10,7 +10,7 @@ GOOD = {
 
 def _run(monkeypatch, tmp_path, result):
     monkeypatch.setattr(llm, "get_llm", lambda: None)
-    monkeypatch.setattr(scenario, "analyze", lambda repo, url, out_dir, _llm: result)
+    monkeypatch.setattr(scenario, "analyze", lambda repo, url, out_dir, _llm, **kw: result)
     out = tmp_path / "draft.json"
     code = cli.main(
         ["analyze", "--repo", "https://github.com/o/r", "--url", "https://x.dev", "--out", str(out)]
@@ -34,7 +34,7 @@ def test_analyze_attaches_auth_file(monkeypatch, tmp_path):  # make e2e AUTH=…
     auth = {"steps": [{"id": 1, "action": "goto", "path": "/login?t=1", "caption": "로그인"}]}
     (tmp_path / "auth.json").write_text(json.dumps(auth))
     monkeypatch.setattr(llm, "get_llm", lambda: None)
-    monkeypatch.setattr(scenario, "analyze", lambda repo, url, out_dir, _llm: dict(GOOD))
+    monkeypatch.setattr(scenario, "analyze", lambda repo, url, out_dir, _llm, **kw: dict(GOOD))
     out = tmp_path / "scenario.json"
     argv = ["analyze", "--repo", "r", "--url", "u", "--out", str(out)]
     assert cli.main([*argv, "--auth", str(tmp_path / "auth.json")]) == 0
@@ -77,3 +77,18 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
     assert "✗ https://github.com/o/broken" in lines[0] and "찾을 수 없" in lines[0]
     assert "✓ https://github.com/o/good" in lines[1] and "LLM" in lines[1]
     assert "✓ https://github.com/o/stale" in lines[2] and "규칙 기본값" in lines[2]
+
+
+def test_cli_analyze_passes_prompt(monkeypatch, tmp_path):  # make e2e PROMPT=…
+    seen = {}
+
+    def fake(repo, url, out_dir, _llm, **kw):
+        seen.update(kw)
+        return dict(GOOD)
+
+    monkeypatch.setattr(llm, "get_llm", lambda: None)
+    monkeypatch.setattr(scenario, "analyze", fake)
+    out = tmp_path / "scenario.json"
+    argv = ["analyze", "--repo", "r", "--url", "u", "--out", str(out), "--prompt", "톤은 발표용"]
+    assert cli.main(argv) == 0
+    assert seen["prompt"] == "톤은 발표용"

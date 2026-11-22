@@ -12,8 +12,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app import auth, llm, paths, pipeline, runs, scenario
+from app.analyze.facts import RepoFacts
 from app.contracts import schema_errors
 from app.github import RepoError
+from app.login import login_steps
+from app.scenario import MAX_PROMPT
 
 load_dotenv(paths.ROOT / ".env")
 log = logging.getLogger(__name__)
@@ -27,11 +30,18 @@ app.add_middleware(
 )
 
 
+class Login(BaseModel):
+    username: str
+    password: str
+
+
 class CreateRun(BaseModel):
     repo: str
     url: str
     totalSec: float = Field(default=60, gt=0)
     auth: dict | None = None  # scenario.auth — 캡처 전 로그인 (응답에서는 가림)
+    login: Login | None = None  # 테스트 계정 — A가 로그인 폼에서 auth 단계를 만든다
+    prompt: str | None = Field(default=None, max_length=MAX_PROMPT)  # 영상에 바라는 점
 
 
 class BuildRun(BaseModel):
@@ -46,6 +56,10 @@ def _dir(rid: str):
         raise HTTPException(404, "run을 찾을 수 없습니다") from None
 
 
+LOGIN_NOT_FOUND = (
+    "로그인 입력칸을 찾지 못했습니다 — "
+    "소셜 로그인만 있는 앱이면 로그인 URL을 직접 넣어 주세요(auth)"
+)
 _PROBE_STEP = {"id": 1, "action": "goto", "path": "/", "caption": "-"}
 
 
@@ -67,13 +81,17 @@ def health() -> dict[str, str]:
 
 @app.post("/api/runs")
 def create_run(body: CreateRun) -> dict:
+    if body.login is not None and body.auth is not None:
+        raise HTTPException(422, "login 과 auth 중 하나만 보내세요")
     if body.auth is not None:
         probe = {"baseUrl": body.url, "auth": body.auth, "steps": [_PROBE_STEP]}
         if errors := schema_errors("scenario", probe):
             raise HTTPException(422, errors)
     rid = runs.new_run()
     try:
-        sc = scenario.analyze(body.repo, body.url, runs.run_dir(rid), llm.get_llm())
+        sc = scenario.analyze(
+            body.repo, body.url, runs.run_dir(rid), llm.get_llm(), prompt=body.prompt
+        )
     except RepoError as e:
         runs.write_status(rid, stage="error", error=str(e))
         raise HTTPException(400, str(e)) from None
@@ -81,8 +99,17 @@ def create_run(body: CreateRun) -> dict:
         log.exception("analyze 실패 %s", rid)
         runs.write_status(rid, stage="error", error=f"분석 실패: {e}")
         raise HTTPException(500, f"분석 실패: {e}") from None
-    if body.auth is not None:  # LLM·캐시를 거친 뒤에 붙인다 — 비밀값은 run 디렉터리에만
-        sc = {**sc, "auth": body.auth}
+    login_auth = None
+    if body.login is not None:
+        facts = RepoFacts.from_json((runs.run_dir(rid) / "facts.json").read_text())
+        login_auth = login_steps(facts, body.login.username, body.login.password)
+        if login_auth is None:
+            msg = LOGIN_NOT_FOUND
+            runs.write_status(rid, stage="error", error=msg)
+            raise HTTPException(400, msg)
+    if (auth_block := body.auth or login_auth) is not None:
+        # LLM·캐시를 거친 뒤에 붙인다 — 비밀값은 run 디렉터리에만
+        sc = {**sc, "auth": auth_block}
         runs.write_json(runs.run_dir(rid) / "scenario.json", sc)
     runs.write_status(rid, stage="analyzed", repo=body.repo, url=body.url, totalSec=body.totalSec)
     return {"id": rid, "scenario": auth.redact(sc)}
@@ -134,10 +161,15 @@ def put_scene(rid: str, body: dict, tasks: BackgroundTasks) -> dict:
     return {"id": rid, "stage": "queued"}
 
 
+def _servable(rel) -> bool:
+    """화면·영상만 내보낸다. scenario.json(로그인 값)·facts·status·prompt 는 API로만."""
+    return rel.parts[0] == "shots" or rel.suffix in (".mp4", ".webm")
+
+
 @app.get("/api/runs/{rid}/files/{path:path}")
 def get_file(rid: str, path: str) -> FileResponse:
     d = _dir(rid).resolve()
     f = (d / path).resolve()
-    if not f.is_relative_to(d) or not f.is_file():
+    if not f.is_relative_to(d) or not f.is_file() or not _servable(f.relative_to(d)):
         raise HTTPException(404, "파일 없음")
     return FileResponse(f)
