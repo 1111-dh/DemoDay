@@ -39,3 +39,41 @@ def test_analyze_attaches_auth_file(monkeypatch, tmp_path):  # make e2e AUTH=…
     argv = ["analyze", "--repo", "r", "--url", "u", "--out", str(out)]
     assert cli.main([*argv, "--auth", str(tmp_path / "auth.json")]) == 0
     assert json.loads(out.read_text())["auth"] == auth
+
+
+def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, capsys):
+    from app import github, paths
+    from app.github import RepoError, RepoSnapshot
+
+    samples = [
+        {"repo": "https://github.com/o/broken", "url": "https://a.dev"},
+        {"repo": "https://github.com/o/good", "url": "https://b.dev"},
+        {"repo": "https://github.com/o/stale", "url": "https://c.dev"},
+    ]
+    (tmp_path / "samples.json").write_text(json.dumps(samples))
+    monkeypatch.setattr(paths, "CACHE", tmp_path / "cache")
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "scenario__o__good__new__k.json").write_text("{}")
+    (tmp_path / "cache" / "scenario__o__stale__old__k.json").write_text("{}")  # 이전 커밋 것
+    monkeypatch.setattr(
+        github,
+        "fetch_repo",
+        lambda u: RepoSnapshot(owner="o", repo=u.rsplit("/", 1)[1], sha="new"),
+    )
+    seen = []
+
+    def fake(repo, url, out_dir, _llm, *, fetch):
+        seen.append(repo)
+        if "broken" in repo:
+            raise RepoError("레포를 찾을 수 없습니다")
+        fetch(repo)
+        return GOOD
+
+    monkeypatch.setattr(llm, "get_llm", lambda: None)
+    monkeypatch.setattr(scenario, "analyze", fake)
+    assert cli.main(["warm", "--file", str(tmp_path / "samples.json")]) == 1
+    assert seen == [s["repo"] for s in samples]
+    lines = capsys.readouterr().out.splitlines()
+    assert "✗ https://github.com/o/broken" in lines[0] and "찾을 수 없" in lines[0]
+    assert "✓ https://github.com/o/good" in lines[1] and "LLM" in lines[1]
+    assert "✓ https://github.com/o/stale" in lines[2] and "규칙 기본값" in lines[2]
