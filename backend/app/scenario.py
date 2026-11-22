@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app import paths
+from app.analyze.elements import Element
 from app.analyze.facts import RepoFacts, build_facts
 from app.contracts import schema_errors
 from app.github import RepoSnapshot, fetch_repo
@@ -22,7 +23,7 @@ from app.llm import LLM, generate
 
 MAX_STEPS = 7
 MAX_PROMPT = 500
-SCENARIO_VERSION = 2  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 3  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -52,6 +53,19 @@ _NOT_DEMO = re.compile(
 # 앞 단계 상태(입력·선택)가 있어야 열리는 흐름 중간 화면 — 바로 goto하면 에러 화면이 찍힌다
 _STATEFUL = re.compile(r"(?:^|/)(?:results?|loading|success|complete|callback)(?=$|/)", re.I)
 
+# 누르면 세션·데이터를 망가뜨리는 요소 — 데모 계정에서 누르지 않는다 (LLM 에 보이지도 않게)
+_DANGER = re.compile(
+    r"로그아웃|log ?out|sign ?out|탈퇴|삭제|delete|remove|결제|구매|purchase|checkout|pay\b"
+    r"|초기화|reset|송금|환불|refund|unsubscribe|구독 ?취소",
+    re.IGNORECASE,
+)
+
+
+def _safe(element: dict | Element) -> bool:
+    text = element["text"] if isinstance(element, dict) else element.text
+    return not _DANGER.search(text)
+
+
 REFERENCE = (Path(__file__).parent / "prompts" / "reference.md").read_text().rstrip("\n")
 
 
@@ -67,13 +81,19 @@ def with_reference(user: str, prompt: str | None, use: str) -> str:
     return user + REFERENCE.format(use=use, prompt=prompt) if prompt else user
 
 
+# 단계형 화면의 2단계 이후(/input/2, /step/3) — 앞 단계 입력 없이 가면 깨진다. 1단계만
+_LATER_STEP = re.compile(r"(?:^|/)(?:input|step|steps|wizard|stage)/(?:[2-9]|\d{2,})(?=$|/)", re.I)
+
+
 def _demo_page(path: str, dynamic: bool) -> bool:
-    return not dynamic and not _NOT_DEMO.search(path) and not _STATEFUL.search(path)
+    return not (
+        dynamic or _NOT_DEMO.search(path) or _STATEFUL.search(path) or _LATER_STEP.search(path)
+    )
 
 
 def _static_pages(facts: RepoFacts) -> dict[str, set[str]]:
     return {
-        p.path: {e.selector for e in p.elements}
+        p.path: {e.selector for e in p.elements if _safe(e)}
         for p in facts.pages
         if _demo_page(p.path, p.dynamic)
     }
@@ -144,7 +164,11 @@ def _min_steps(facts: RepoFacts) -> int:
 
 def _user_message(facts: RepoFacts, prompt: str | None = None) -> str:
     data = json.loads(facts.to_json())
-    data["pages"] = [p for p in data["pages"] if _demo_page(p["path"], p["dynamic"])]
+    data["pages"] = [
+        {**p, "elements": [e for e in p["elements"] if _safe(e)]}
+        for p in data["pages"]
+        if _demo_page(p["path"], p["dynamic"])
+    ]
     user = "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, indent=2)
     return with_reference(user, prompt, "화면 순서와 보여줄 기능에만 반영한다")
 
