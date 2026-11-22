@@ -48,8 +48,8 @@ dev-web: ## Next.js :3000
 studio: ## Remotion Studio (fixture scene.json 으로 장면 미리보기)
 	pnpm --filter @demoday/render studio
 
-e2e: ## 전체 파이프라인. REPO=<github url> URL=<배포 url> [SEC=60]
-	scripts/e2e.sh "$(REPO)" "$(URL)" "$(or $(SEC),60)"
+e2e: ## 전체 파이프라인. REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>]
+	scripts/e2e.sh "$(REPO)" "$(URL)" "$(or $(SEC),60)" "$(AUTH)"
 
 e2e-render: ## fixture scene.json → runs/fixture/preview.mp4 (렌더만)
 	rm -rf runs/fixture && mkdir -p runs && cp -R contracts/fixtures runs/fixture

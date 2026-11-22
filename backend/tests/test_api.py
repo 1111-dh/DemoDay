@@ -166,3 +166,46 @@ def test_get_run_tolerates_half_written_scene(client):  # 리뷰 #5
     (runs.run_dir(rid) / "scene.json").write_text('{"fps": 3')
     res = client.get(f"/api/runs/{rid}")
     assert res.status_code == 200 and "scene" not in res.json()
+
+
+AUTH = {
+    "steps": [
+        {"id": 1, "action": "goto", "path": "/api/demo/login?secret=abc123", "caption": "로그인"},
+        {
+            "id": 2,
+            "action": "type",
+            "selector": "input[name=pw]",
+            "value": "pw!",
+            "caption": "비번",
+        },
+    ]
+}
+
+
+def create_with_auth(client, auth=AUTH):
+    return client.post(
+        "/api/runs", json={"repo": "https://github.com/o/r", "url": "https://x.dev", "auth": auth}
+    )
+
+
+def test_create_run_with_auth_saves_real_and_returns_redacted(client):
+    res = create_with_auth(client)
+    assert res.status_code == 200, res.text
+    rid, shown = res.json()["id"], res.json()["scenario"]["auth"]["steps"]
+    assert (shown[0]["path"], shown[1]["value"]) == ("/api/demo/login?***", "***")
+    saved = json.loads((runs.run_dir(rid) / "scenario.json").read_text())
+    assert saved["auth"] == AUTH
+    assert client.get(f"/api/runs/{rid}").json()["scenario"]["auth"]["steps"][1]["value"] == "***"
+
+
+def test_put_redacted_scenario_keeps_stored_secrets(client):
+    rid = create_with_auth(client).json()["id"]
+    sc = client.get(f"/api/runs/{rid}").json()["scenario"]
+    sc["steps"][0]["caption"] = "바꾼 자막"
+    assert client.put(f"/api/runs/{rid}/scenario", json=sc).status_code == 200
+    saved = json.loads((runs.run_dir(rid) / "scenario.json").read_text())
+    assert saved["auth"] == AUTH and saved["steps"][0]["caption"] == "바꾼 자막"
+
+
+def test_create_run_invalid_auth_422(client):
+    assert create_with_auth(client, {"steps": []}).status_code == 422
