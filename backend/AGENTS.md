@@ -7,7 +7,8 @@
 - 캡처·렌더는 subprocess로 호출한다: `pnpm --filter @demoday/capture capture <scenario> <runDir>`, `pnpm --filter @demoday/render render <runDir> <out.mp4>`.
 
 ## LLM 출력 규칙
-- LLM은 **scenario.json / scene.json만** 만든다. 최신 Claude 모델과 structured output(JSON schema)을 쓴다.
+- LLM은 **scenario.json / scene.json만** 만든다. structured output(JSON schema)을 쓴다.
+- 공급자는 `.env`의 `LLM_PROVIDER`: `groq`(무료 플랜, `GROQ_API_KEY`, 기본 모델 `openai/gpt-oss-120b`, `GROQ_MODEL`로 변경) 또는 `anthropic`(`ANTHROPIC_API_KEY`). 키가 없으면 규칙 기반 기본값만 쓴다. 구현은 `app/llm.py`의 `get_llm()`.
 - 결과는 반드시 `schema_errors(kind, data)`로 검증한다. pydantic 모델은 if/then 조건(goto→path 등)을 확인하지 못한다.
 - 위반이 있으면 에러 목록을 프롬프트에 붙여 재시도(최대 2회)하고, 그래도 실패하면 규칙 기반 기본값을 쓴다.
 - 샘플 레포 분석 결과는 `runs/cache/`에 캐싱한다. 라이브 시연 중 LLM 지연을 막기 위해서다.

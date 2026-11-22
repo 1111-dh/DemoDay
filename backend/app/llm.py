@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 import anthropic
+import httpx
 import pydantic
 
 MODEL = "claude-opus-5-5"
@@ -49,6 +50,54 @@ class ClaudeLLM:
         return res.parsed_output
 
 
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODEL = "openai/gpt-oss-120b"
+
+
+class OpenAICompatLLM:
+    """OpenAI 호환 chat/completions (Groq 무료 플랜 등). JSON schema 응답을 pydantic으로 검증."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        client: httpx.Client | None = None,
+    ):
+        self.url = base_url.rstrip("/") + "/chat/completions"
+        self.headers = {"Authorization": f"Bearer {api_key}"}
+        self.model = model
+        self.client = client or httpx.Client(timeout=90)
+
+    def parse[T: pydantic.BaseModel](self, *, system: str, user: str, output: type[T]) -> T | None:
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": output.__name__, "schema": output.model_json_schema()},
+            },
+        }
+        try:
+            res = self.client.post(self.url, headers=self.headers, json=body)
+        except httpx.HTTPError as e:
+            log.warning("LLM 연결 실패: %s", type(e).__name__)
+            return None
+        if res.status_code != 200:
+            log.warning("LLM API 오류 %s: %s", res.status_code, res.text[:300])
+            return None
+        try:
+            content = res.json()["choices"][0]["message"]["content"]
+            return output.model_validate_json(content)
+        except (KeyError, IndexError, TypeError, ValueError):
+            log.warning("LLM 출력 파싱 실패")
+            return None
+
+
 def generate[T: pydantic.BaseModel](
     llm: LLM,
     *,
@@ -72,4 +121,18 @@ def generate[T: pydantic.BaseModel](
 
 
 def get_llm() -> LLM | None:
+    """LLM_PROVIDER(groq|anthropic)를 따르고, 비어 있으면 키가 있는 쪽을 쓴다.
+
+    키가 없으면 None — 호출부가 규칙 기반 기본값을 쓴다.
+    """
+    provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if provider == "groq" or (not provider and groq_key):
+        if not groq_key:
+            return None
+        return OpenAICompatLLM(
+            base_url=GROQ_BASE_URL,
+            api_key=groq_key,
+            model=os.environ.get("GROQ_MODEL", GROQ_MODEL),
+        )
     return ClaudeLLM() if os.environ.get("ANTHROPIC_API_KEY") else None
