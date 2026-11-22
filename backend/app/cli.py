@@ -26,12 +26,14 @@ class ContractError(Exception):
         super().__init__("계약 위반:\n" + "\n".join(f"- {e}" for e in errors))
 
 
-def analyze(repo: str, url: str, out: str) -> None:
+def analyze(repo: str, url: str, out: str, auth_file: str | None = None) -> None:
     from app.llm import get_llm
     from app.scenario import analyze as run_analyze
 
     out_path = Path(out)
     scenario = run_analyze(repo, url, out_path.parent, get_llm())
+    if auth_file:  # 캡처 전 로그인 — LLM·캐시를 거친 뒤에 붙인다
+        scenario = {**scenario, "auth": json.loads(Path(auth_file).read_text())}
     if errors := schema_errors("scenario", scenario):
         raise ContractError(errors)
     out_path.write_text(json.dumps(scenario, ensure_ascii=False, indent=2))
@@ -61,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--repo", required=True)
     a.add_argument("--url", required=True)
     a.add_argument("--out", required=True)
+    a.add_argument("--auth", help="scenario.auth JSON 파일 (캡처 전 로그인 단계)")
     s = sub.add_parser("scene")
     s.add_argument("--run", required=True)
     s.add_argument("--total-sec", type=float, default=60)
@@ -70,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         if args.cmd == "analyze":
-            analyze(args.repo, args.url, args.out)
+            analyze(args.repo, args.url, args.out, args.auth)
         elif args.cmd == "facts":
             facts(args.repo)
         else:
