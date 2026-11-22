@@ -3,7 +3,7 @@
 # 단계마다 계약 검증. 실패한 단계와 원인을 출력하고 멈춘다.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REPO="${1:-}"; URL="${2:-}"; SEC="${3:-60}"; AUTH="${4:-}"; PROMPT="${5:-}"
+REPO="${1:-}"; URL="${2:-}"; SEC="${3:-60}"; AUTH="${4:-}"; PROMPT="${5:-${DEMODAY_PROMPT:-}}"
 [[ -z "$REPO" || -z "$URL" ]] && { echo "사용법: make e2e REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>] [PROMPT=\"영상에 바라는 점\"]"; exit 1; }
 AUTH_ABS=""; [[ -n "$AUTH" ]] && AUTH_ABS="$(cd "$(dirname "$AUTH")" && pwd)/$(basename "$AUTH")"
 

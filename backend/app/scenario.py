@@ -57,7 +57,8 @@ REFERENCE = (Path(__file__).parent / "prompts" / "reference.md").read_text().rst
 
 def normalize_prompt(prompt: str | None) -> str | None:
     """앞뒤 공백 제거, MAX_PROMPT 자로 자르기. 비면 None."""
-    text = (prompt or "").strip()[:MAX_PROMPT]
+    # <<< >>> 는 참고 요청 블록의 경계 — 사용자 문장이 블록을 닫지 못하게 지운다
+    text = (prompt or "").replace("<<<", "").replace(">>>", "").strip()[:MAX_PROMPT]
     return text or None
 
 
