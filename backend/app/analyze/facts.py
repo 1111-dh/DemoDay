@@ -84,18 +84,24 @@ def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
 
 
 _BADGE = re.compile(r"^\s*(?:\[!\[|!\[)")
+_FENCE = re.compile(r"^\s*(?:```|~~~)")
+_HTML_TAG = re.compile(r"<[^>]+>")
 
 
 def readme_body(readme: str) -> str:
-    """HTML 줄·이미지·배지·코드 블록을 뺀 README 본문 (빈 줄은 하나로, README_LIMIT 자)."""
+    """HTML 태그·이미지·배지·코드 블록(``` ~~~)을 뺀 README 본문 (README_LIMIT 자)."""
     out: list[str] = []
     fenced = False
     for line in readme.splitlines():
-        if line.lstrip().startswith("```"):
+        if _FENCE.match(line):
             fenced = not fenced
             continue
-        if fenced or line.lstrip().startswith("<") or _BADGE.match(line):
+        if fenced or _BADGE.match(line):
             continue
+        text = _HTML_TAG.sub("", line)  # <p align=center>핵심 문장</p> → 핵심 문장
+        if line.strip() and not text.strip():
+            continue  # 태그만 있던 줄(<img>, </div>)은 빈 줄로도 남기지 않는다
+        line = text
         if not line.strip() and (not out or not out[-1].strip()):
             continue
         out.append(line.rstrip())

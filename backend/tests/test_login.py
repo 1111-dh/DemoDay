@@ -102,3 +102,34 @@ def test_login_steps_none_when_only_social_submit():
         ],
     )
     assert login_steps(_facts(page), "u", "p") is None
+
+
+def _page(path="/login", *elements, dynamic=False):
+    return PageFacts(path, dynamic, "f", list(elements))
+
+
+EMAIL = Element("input", "email", "input[name=email]")
+PASSWORD = Element("input", "password", "input[name=password]")
+
+
+def test_with_email_button_is_not_social():  # PR #10 리뷰 (B)
+    button = Element("button", "Sign in with email", "text=Sign in with email")
+    steps = login_steps(_facts(_page("/login", EMAIL, PASSWORD, button)), "u", "p")["steps"]
+    assert steps[3]["selector"] == "text=Sign in with email"
+
+
+def test_no_password_field_is_none():  # 추측하지 않고 400으로 알린다
+    search = Element("input", "검색", 'input[placeholder="검색"]')
+    login = Element("button", "로그인", "text=로그인")
+    assert login_steps(_facts(_page("/login", search, EMAIL, login)), "u", "p") is None
+
+
+def test_no_submit_button_is_none():
+    signup = Element("button", "회원가입", "text=회원가입")
+    assert login_steps(_facts(_page("/login", EMAIL, PASSWORD, signup)), "u", "p") is None
+
+
+def test_dynamic_login_page_is_skipped():
+    login = Element("button", "로그인", "text=로그인")
+    page = _page("/[locale]/login", EMAIL, PASSWORD, login, dynamic=True)
+    assert login_steps(_facts(page), "u", "p") is None

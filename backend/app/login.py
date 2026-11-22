@@ -15,10 +15,10 @@ _LOGIN_PATH = re.compile(r"(?:^|/)(?:log-?in|sign-?in)(?=$|/)", re.IGNORECASE)
 _PASSWORD = re.compile(r"password|비밀번호|비번|\bpw\b", re.IGNORECASE)
 _SUBMIT = re.compile(r"로그인|log ?in|sign ?in", re.IGNORECASE)
 _SUBMIT_EXACT = re.compile(r"^\s*(?:로그인|log ?in|sign ?in)\s*$", re.IGNORECASE)
-# 소셜 로그인 버튼 — 누르면 OAuth 페이지로 가서 로그인되지 않은 채 녹화된다
+# 소셜 로그인 버튼(서비스 이름) — 누르면 OAuth 페이지로 가서 로그인되지 않은 채 녹화된다.
+# "Sign in with email" 같은 일반 버튼은 걸러지지 않게 서비스 이름만 본다.
 _SOCIAL = re.compile(
-    r"카카오|kakao|구글|google|네이버|naver|apple|애플|github|facebook|페이스북"
-    r"|\bwith\b|으로|로 계속",
+    r"카카오|kakao|구글|google|네이버|naver|apple|애플|github|깃허브|facebook|페이스북",
     re.IGNORECASE,
 )
 
@@ -30,19 +30,23 @@ def _form(page: PageFacts) -> tuple[list[Element], list[Element]]:
 
 
 def login_steps(facts: RepoFacts, username: str, password: str) -> dict | None:
-    """로그인 폼을 못 찾으면 None (예: 소셜 로그인 버튼만 있는 앱)."""
+    """로그인 폼을 못 찾으면 None → API 400.
+
+    비밀번호 칸·로그인 버튼을 확실히 못 찾으면 추측하지 않는다 — 캡처는 auth 실패에도 계속
+    진행하므로, 잘못 고르면 에러 없이 로그아웃 상태가 녹화된다.
+    """
     for page in facts.pages:
-        if not _LOGIN_PATH.search(page.path):
+        if page.dynamic or not _LOGIN_PATH.search(page.path):
             continue
         inputs, buttons = _form(page)
-        if len(inputs) < 2 or not buttons:
-            continue
-        pw = next((e for e in inputs if _PASSWORD.search(f"{e.text} {e.selector}")), inputs[1])
-        user = next(e for e in inputs if e is not pw)
+        pw = next((e for e in inputs if _PASSWORD.search(f"{e.text} {e.selector}")), None)
+        user = next((e for e in inputs if e is not pw), None)
         submit = next(
             (b for b in buttons if _SUBMIT_EXACT.match(b.text)),
-            next((b for b in buttons if _SUBMIT.search(b.text)), buttons[-1]),
+            next((b for b in buttons if _SUBMIT.search(b.text)), None),
         )
+        if pw is None or user is None or submit is None:
+            continue
         steps = [
             {"action": "goto", "path": page.path, "caption": "로그인"},
             {"action": "type", "selector": user.selector, "value": username, "caption": "아이디"},

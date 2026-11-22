@@ -133,3 +133,12 @@ def test_from_json_without_readme_field():  # 이전 run 의 facts.json
     d = asdict(RepoFacts("n", "s", [], None, None, []))
     d.pop("readme")
     assert RepoFacts.from_json(json.dumps(d)).readme == ""
+
+
+def test_readme_body_tilde_fence_and_inline_html():  # PR #10 리뷰 (B)
+    from app.analyze.facts import readme_body
+
+    body = readme_body(
+        '<p align="center">핵심 문장</p>\n<img src="a.png" />\n~~~bash\nnpm i\n~~~\n본문\n'
+    )
+    assert body == "핵심 문장\n본문"
