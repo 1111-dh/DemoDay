@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.github import RepoError, fetch_repo, parse_repo_url, want_file
+from app.github import RepoError, fetch_repo, parse_repo_url, select_files, want_file
 
 TREE = [
     {"path": "README.md", "type": "blob", "size": 100},
@@ -105,3 +105,29 @@ def test_errors_are_readable(tmp_path):
         fetch_repo(
             "https://github.com/o/r", client=httpx.Client(transport=limited), cache_dir=tmp_path
         )
+
+
+def test_want_file_skips_test_dirs():
+    assert not want_file("frontend/src/app/test/renderApp.tsx")
+    assert not want_file("src/__mocks__/handlers.ts")
+
+
+def test_select_files_prefers_routers_and_pages():
+    blobs = [
+        {"path": p, "size": 100}
+        for p in [
+            "frontend/src/app/splash/SplashHost.tsx",
+            "frontend/src/app/bootQueries.ts",
+            "frontend/src/pages/login/ui/LoginPageSkeleton.tsx",
+            "frontend/src/pages/dashboard/ui/DashboardPage.tsx",
+            "frontend/src/app/router/routes.tsx",
+            "frontend/package.json",
+            "README.md",
+        ]
+    ] + [{"path": "src/pages/Huge.tsx", "size": 10_000_000}]
+    assert select_files(blobs, limit=4) == [
+        "frontend/package.json",
+        "README.md",
+        "frontend/src/app/router/routes.tsx",
+        "frontend/src/pages/dashboard/ui/DashboardPage.tsx",
+    ]

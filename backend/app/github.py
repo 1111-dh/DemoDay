@@ -18,10 +18,22 @@ MAX_FILES = 80
 MAX_BYTES = 200_000
 
 _URL = re.compile(r"^https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:/.*)?$")
-_SKIP_DIRS = ("node_modules/", "dist/", ".next/", "build/", "out/", "coverage/")
+_SKIP_DIRS = (
+    "node_modules/",
+    "dist/",
+    ".next/",
+    "build/",
+    "out/",
+    "coverage/",
+    "test/",
+    "tests/",
+    "__mocks__/",
+    "mocks/",
+    "stories/",
+)
 _CODE_EXT = (".tsx", ".jsx", ".ts", ".js")
 _ROUTE_HINTS = ("app/", "pages/", "routes", "router", "App.", "main.")
-_TEST_HINT = re.compile(r"(\.test\.|\.spec\.|__tests__/)")
+_TEST_HINT = re.compile(r"(\.test\.|\.spec\.|\.stories\.|__tests__/)")
 
 
 class RepoError(Exception):
@@ -62,6 +74,28 @@ def want_file(path: str) -> bool:
     return path.endswith(_CODE_EXT) and any(h in path for h in _ROUTE_HINTS)
 
 
+def _rank(path: str) -> int:
+    """받을 순서. 0 README·package.json → 1 라우터 → 2 페이지 → 3 기타 → 4 스켈레톤·스타일."""
+    name = path.rsplit("/", 1)[-1]
+    stem = name.split(".", 1)[0]
+    low = stem.lower()
+    if name == "package.json" or ("/" not in path and low.startswith("readme")):
+        return 0
+    if low in ("app", "main", "routes", "router") or low.endswith(("routes", "router")):
+        return 1
+    if "skeleton" in low or low in ("styles", "shell"):
+        return 4
+    if low == "page" or stem.endswith("Page") or re.search(r"(?:^|/)pages/[^/]+$", path):
+        return 2
+    return 3
+
+
+def select_files(blobs: list[dict], limit: int = MAX_FILES) -> list[str]:
+    """트리 blob 중 분석에 쓸 파일을 우선순위대로 최대 limit개."""
+    wanted = [b["path"] for b in blobs if want_file(b["path"]) and b.get("size", 0) <= MAX_BYTES]
+    return sorted(wanted, key=_rank)[:limit]
+
+
 def _get(client: httpx.Client, url: str, headers: dict[str, str]) -> httpx.Response:
     try:
         res = client.get(url, headers=headers)
@@ -95,9 +129,7 @@ def fetch_repo(
     tree = _get(client, f"{API}/repos/{owner}/{repo}/git/trees/{sha}?recursive=1", headers).json()
     blobs = [t for t in tree.get("tree", []) if t.get("type") == "blob"]
     all_paths = [t["path"] for t in blobs]
-    targets = [t["path"] for t in blobs if want_file(t["path"]) and t.get("size", 0) <= MAX_BYTES][
-        :MAX_FILES
-    ]
+    targets = select_files(blobs)
 
     files = {p: _get(client, f"{RAW}/{owner}/{repo}/{sha}/{p}", {}).text for p in targets}
     snap = RepoSnapshot(owner=owner, repo=repo, sha=sha, paths=all_paths, files=files)

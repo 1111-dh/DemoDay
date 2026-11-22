@@ -182,3 +182,23 @@ def test_analyze_does_not_cache_default(tmp_path):
         cache_dir=tmp_path / "cache",
     )
     assert not list((tmp_path / "cache").glob("scenario__*"))
+
+
+def test_default_skips_auth_legal_and_mock_pages():
+    pages = [
+        PageFacts(p, False, "src/routes.tsx", [])
+        for p in [
+            "/",
+            "/login",
+            "/signup",
+            "/forgot-password",
+            "/reset-password",
+            "/privacy",
+            "/terms",
+            "/__mock/mail",
+            "/dashboard",
+            "/account/withdrawal",
+        ]
+    ]
+    sc = default_scenario(facts(pages), BASE)
+    assert [s["path"] for s in sc["steps"]] == ["/", "/dashboard"]

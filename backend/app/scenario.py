@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
@@ -37,8 +38,24 @@ class ScenarioDraft(BaseModel):
     steps: list[StepDraft]
 
 
+# 데모에 보여주지 않는 페이지: 로그인·가입·비밀번호(MVP 제외), 약관·탈퇴, _private·__mock, 오류
+_NOT_DEMO = re.compile(
+    r"(?:^|/)(?:_|log-?in|sign-?in|sign-?up|register|log-?out|forgot|reset|password"
+    r"|terms|privacy|policy|withdraw|404|not-found|error)",
+    re.IGNORECASE,
+)
+
+
+def _demo_page(path: str, dynamic: bool) -> bool:
+    return not dynamic and not _NOT_DEMO.search(path)
+
+
 def _static_pages(facts: RepoFacts) -> dict[str, set[str]]:
-    return {p.path: {e.selector for e in p.elements} for p in facts.pages if not p.dynamic}
+    return {
+        p.path: {e.selector for e in p.elements}
+        for p in facts.pages
+        if _demo_page(p.path, p.dynamic)
+    }
 
 
 def _caption_for(path: str) -> str:
@@ -106,7 +123,7 @@ def _min_steps(facts: RepoFacts) -> int:
 
 def _user_message(facts: RepoFacts) -> str:
     data = json.loads(facts.to_json())
-    data["pages"] = [p for p in data["pages"] if not p["dynamic"]]
+    data["pages"] = [p for p in data["pages"] if _demo_page(p["path"], p["dynamic"])]
     return "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, indent=2)
 
 

@@ -72,3 +72,36 @@ def test_build_facts_no_app():
     facts = build_facts(snap)
     assert (facts.app_dir, facts.framework, facts.pages) == (None, None, [])
     assert facts.name == "r"
+
+
+ROUTER_NESTED = """
+export const appRoutes = (
+  <Route path="/" element={<Root />}>
+    <Route element={<Guard />}>
+      <Route index element={screen(landing)} />
+      <Route path="login" element={screen(login)} />
+    </Route>
+    <Route path="workspaces/:id" element={<Team />}>
+      <Route element={<Layout />}>
+        <Route path="dashboard" element={screen(dash)} />
+        <Route path="meetings/upload" element={<PM />}>
+          <Route index element={screen(up)} />
+        </Route>
+      </Route>
+    </Route>
+    <Route path="*" element={<NotFound />} />
+  </Route>
+)
+"""
+
+
+def test_react_router_nested_paths_join_parents():
+    snap = make_snap({"package.json": pkg({"react": "18"}), "src/routes.tsx": ROUTER_NESTED})
+    routes = react_routes(snap, find_app_root(snap))
+    assert [r.path for r in routes] == [
+        "/",
+        "/login",
+        "/workspaces/:id",
+        "/workspaces/:id/dashboard",
+        "/workspaces/:id/meetings/upload",
+    ]

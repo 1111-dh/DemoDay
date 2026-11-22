@@ -124,6 +124,7 @@ def next_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
 _CODE = (".tsx", ".jsx", ".ts", ".js")
 _IMPORT = re.compile(r"""import\s+(\w+)\s+from\s+["'](\.{1,2}/[^"']+)["']""")
 _ROUTE_TAG = re.compile(r"<Route\b")
+_ROUTE_CLOSE = re.compile(r"</Route\s*>")
 _OBJ_PATH = re.compile(r"""\bpath\s*:\s*["']([^"']*)["']""")
 
 
@@ -151,19 +152,74 @@ def _norm_react_path(raw: str) -> str | None:
     return raw if raw.startswith("/") else "/" + raw
 
 
+def _tag_end(src: str, i: int) -> tuple[int, bool]:
+    """`<Route` 바로 뒤 i부터 태그 끝 `>`까지 → (끝 위치, self-closing).
+
+    속성의 `{…}`·따옴표 안 `>`는 무시한다.
+    """
+    depth, quote = 0, ""
+    for j in range(i, len(src)):
+        c = src[j]
+        if quote:
+            quote = "" if c == quote else quote
+        elif c in "\"'`":
+            quote = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif c == ">" and depth == 0:
+            return j + 1, src[j - 1] == "/"
+    return len(src), True
+
+
+def _join(segments: list[str | None]) -> str:
+    parts: list[str] = []
+    for seg in segments:
+        if seg is None:
+            continue
+        if seg.startswith("/"):
+            parts = []
+        parts += [x for x in seg.split("/") if x]
+    return "/" + "/".join(parts)
+
+
+def _jsx_routes(src: str) -> list[tuple[str, str | None]]:
+    """중첩 <Route>를 부모 path와 이어 (전체 경로, element 컴포넌트) 목록으로.
+
+    path 없는 레이아웃 Route는 경로에 끼지 않고, index Route는 부모 경로가 된다.
+    """
+    events = [(m.start(), m.end()) for m in _ROUTE_TAG.finditer(src)]
+    events += [(m.start(), -1) for m in _ROUTE_CLOSE.finditer(src)]
+    stack: list[str | None] = []
+    hits: list[tuple[str, str | None]] = []
+    for _, after in sorted(events):
+        if after < 0:
+            if stack:
+                stack.pop()
+            continue
+        end, self_closing = _tag_end(src, after)
+        tag = src[after:end]
+        p = re.search(r"""\bpath\s*=\s*["']([^"']*)["']""", tag)
+        el = re.search(r"\belement\s*=\s*\{\s*<(\w+)", tag)
+        raw = p.group(1).strip() if p else None
+        comp = el.group(1) if el else None
+        if raw is not None and raw not in ("*", "/*"):
+            hits.append((_join([*stack, raw]), comp))
+        elif raw is None and re.search(r"\bindex\b", tag):
+            hits.append((_join(stack), comp))
+        if not self_closing:
+            stack.append(raw)
+    return hits
+
+
 def react_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
     routes: dict[str, Route] = {}
     for file, src in snap.files.items():
         if not file.endswith(_CODE) or _rel(file, root.dir) is None:
             continue
         imports = dict(_IMPORT.findall(src))
-        hits: list[tuple[str, str | None]] = []
-        for m in _ROUTE_TAG.finditer(src):
-            window = src[m.end() : m.end() + 300].split("<Route", 1)[0]
-            p = re.search(r"""\bpath\s*=\s*["']([^"']*)["']""", window)
-            el = re.search(r"\belement\s*=\s*\{\s*<(\w+)", window)
-            if p:
-                hits.append((p.group(1), el.group(1) if el else None))
+        hits = _jsx_routes(src)
         for m in _OBJ_PATH.finditer(src):
             start = src.rfind("{", 0, m.start())
             end = src.find("}", m.end())
