@@ -25,24 +25,44 @@ async function center(loc: Locator) {
 }
 
 /**
+ * Flutter web은 canvas라 셀렉터가 없다. semantics를 켜면 role=button[name="…"] 등이 동작한다.
+ * 해시 라우팅으로 같은 문서에 머물면 이미 켜져 있으므로(placeholder 없음) flt-semantics 노드로도 기다림을 끝낸다.
+ */
+async function enableFlutterSemantics(page: Page) {
+  // load 시점엔 엔진이 아직 flutter-view를 안 만들었을 수 있어 로더 전역(_flutter)으로 먼저 판별한다
+  const isFlutter =
+    (await page.evaluate("'_flutter' in window").catch(() => false)) ||
+    (await page.locator("flutter-view, flt-glass-pane").count()) > 0;
+  if (!isFlutter) return;
+  await page.locator("flt-semantics-placeholder, flt-semantics").first().waitFor({ state: "attached", timeout: 10_000 }).catch(() => {});
+  await page.locator("flt-semantics-placeholder").first().dispatchEvent("click", undefined, { timeout: 1000 }).catch(() => {});
+}
+
+/**
  * 단계를 실행하고 클릭 좌표와 마스킹할 입력칸을 돌려준다. 실패하면 throw.
  * click은 좌표가 클릭 전 화면 기준이므로 클릭 직전에 찍는다(taken). 클릭 결과는 다음 단계 화면에 나온다.
+ * shotPath가 null이면(auth 단계) 찍지 않는다.
  */
-async function run(page: Page, baseUrl: string, step: Step, shotPath: string) {
+async function run(page: Page, baseUrl: string, step: Step, shotPath: string | null) {
   const loc = step.selector ? page.locator(step.selector).first() : null;
   switch (step.action) {
-    case "goto":
-      await page.goto(new URL(step.path!, baseUrl).href, { waitUntil: "load" });
+    case "goto": {
+      // new URL(path, base)는 base의 하위 경로(/repo/)를 버리므로 문자열로 이어 붙인다. 해시(/#/x)·쿼리도 그대로.
+      const path = step.path!.startsWith("/") ? step.path! : `/${step.path}`;
+      await page.goto(baseUrl.replace(/\/+$/, "") + path, { waitUntil: "load" });
+      await enableFlutterSemantics(page);
       return { click: null, mask: [] };
+    }
     case "click": {
-      await loc!.scrollIntoViewIfNeeded();
+      // trial: 클릭 없이 스크롤·actionability만 확인. 리렌더로 요소가 바뀌어도 재시도한다(scrollIntoViewIfNeeded는 안 함)
+      await loc!.click({ trial: true });
       const click = await center(loc!);
-      await page.screenshot({ path: shotPath });
+      if (shotPath) await page.screenshot({ path: shotPath });
       await loc!.click();
       return { click, mask: [], taken: true };
     }
     case "type": {
-      await loc!.scrollIntoViewIfNeeded();
+      await loc!.click({ trial: true });
       const click = await center(loc!);
       await loc!.fill(step.value!);
       return { click, mask: [loc!] }; // 입력값은 화면에서 가린다
@@ -67,6 +87,13 @@ async function main(scenarioPath: string, runDir: string) {
     const page = await browser.newPage({ viewport: { width: VIEWPORT.w, height: VIEWPORT.h } });
     page.setDefaultTimeout(STEP_TIMEOUT);
     page.setDefaultNavigationTimeout(STEP_TIMEOUT * 3); // 첫 로딩(콜드 스타트)은 여유를 더 준다
+
+    // 로그인: 같은 컨텍스트에서 먼저 실행(쿠키·localStorage 유지). 찍지 않고, 값·URL·에러 메시지를 로그에 쓰지 않는다.
+    for (const step of scenario.auth?.steps ?? []) {
+      await run(page, scenario.baseUrl, step, null).catch(() => console.warn(`! auth step ${step.id} (${step.action}) 실패 — 건너뜀`));
+    }
+    if (scenario.auth) await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+
     const start = Date.now();
 
     for (const step of scenario.steps) {
