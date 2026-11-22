@@ -5,9 +5,14 @@ import pytest
 from app.github import RepoSnapshot
 
 
-def make_snap(files: dict[str, str], extra_paths: list[str] | None = None) -> RepoSnapshot:
+def make_snap(
+    files: dict[str, str], extra_paths: list[str] | None = None, loader=None
+) -> RepoSnapshot:
+    """loader(path) -> str|None 를 주면 files 에 없는 경로를 snap.read 가 그걸로 받는다."""
     paths = sorted(set(files) | set(extra_paths or []))
-    return RepoSnapshot(owner="o", repo="r", sha="s", paths=paths, files=files)
+    snap = RepoSnapshot(owner="o", repo="r", sha="s", paths=paths, files=dict(files))
+    snap.loader = loader
+    return snap
 
 
 def pkg(deps: dict[str, str] | None = None, dev: dict[str, str] | None = None) -> str:

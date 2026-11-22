@@ -3,8 +3,9 @@
 # 단계마다 계약 검증. 실패한 단계와 원인을 출력하고 멈춘다.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REPO="${1:-}"; URL="${2:-}"; SEC="${3:-60}"
-[[ -z "$REPO" || -z "$URL" ]] && { echo "사용법: make e2e REPO=<github url> URL=<배포 url> [SEC=60]"; exit 1; }
+REPO="${1:-}"; URL="${2:-}"; SEC="${3:-60}"; AUTH="${4:-}"
+[[ -z "$REPO" || -z "$URL" ]] && { echo "사용법: make e2e REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>]"; exit 1; }
+AUTH_ARG=""; [[ -n "$AUTH" ]] && AUTH_ARG="--auth '$(cd "$(dirname "$AUTH")" && pwd)/$(basename "$AUTH")'"
 
 RUN="$ROOT/runs/$(date +%m%d-%H%M%S)"
 mkdir -p "$RUN"
@@ -22,7 +23,7 @@ stage() {  # stage <이름> <검증할 파일|-> <명령...>
 }
 
 stage analyze "$RUN/scenario.json" \
-  bash -c "cd '$ROOT/backend' && uv run python -m app.cli analyze --repo '$REPO' --url '$URL' --out '$RUN/scenario.json'"
+  bash -c "cd '$ROOT/backend' && uv run python -m app.cli analyze --repo '$REPO' --url '$URL' --out '$RUN/scenario.json' $AUTH_ARG"
 stage capture "$RUN/capture.json" \
   pnpm --silent --filter @demoday/capture capture "$RUN/scenario.json" "$RUN"
 stage scene "$RUN/scene.json" \

@@ -28,3 +28,14 @@ def test_analyze_rejects_invalid_scenario(monkeypatch, tmp_path):  # 리뷰 #10
     code, out = _run(monkeypatch, tmp_path, {"baseUrl": "x", "steps": []})
     assert code == 1
     assert not out.exists()
+
+
+def test_analyze_attaches_auth_file(monkeypatch, tmp_path):  # make e2e AUTH=…
+    auth = {"steps": [{"id": 1, "action": "goto", "path": "/login?t=1", "caption": "로그인"}]}
+    (tmp_path / "auth.json").write_text(json.dumps(auth))
+    monkeypatch.setattr(llm, "get_llm", lambda: None)
+    monkeypatch.setattr(scenario, "analyze", lambda repo, url, out_dir, _llm: dict(GOOD))
+    out = tmp_path / "scenario.json"
+    argv = ["analyze", "--repo", "r", "--url", "u", "--out", str(out)]
+    assert cli.main([*argv, "--auth", str(tmp_path / "auth.json")]) == 0
+    assert json.loads(out.read_text())["auth"] == auth

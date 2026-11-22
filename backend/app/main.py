@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app import llm, paths, pipeline, runs, scenario
+from app import auth, llm, paths, pipeline, runs, scenario
 from app.contracts import schema_errors
 from app.github import RepoError
 
@@ -31,6 +31,7 @@ class CreateRun(BaseModel):
     repo: str
     url: str
     totalSec: float = Field(default=60, gt=0)
+    auth: dict | None = None  # scenario.auth — 캡처 전 로그인 (응답에서는 가림)
 
 
 class BuildRun(BaseModel):
@@ -43,6 +44,9 @@ def _dir(rid: str):
         return runs.run_dir(rid)
     except KeyError:
         raise HTTPException(404, "run을 찾을 수 없습니다") from None
+
+
+_PROBE_STEP = {"id": 1, "action": "goto", "path": "/", "caption": "-"}
 
 
 def _not_busy(rid: str) -> None:
@@ -63,6 +67,10 @@ def health() -> dict[str, str]:
 
 @app.post("/api/runs")
 def create_run(body: CreateRun) -> dict:
+    if body.auth is not None:
+        probe = {"baseUrl": body.url, "auth": body.auth, "steps": [_PROBE_STEP]}
+        if errors := schema_errors("scenario", probe):
+            raise HTTPException(422, errors)
     rid = runs.new_run()
     try:
         sc = scenario.analyze(body.repo, body.url, runs.run_dir(rid), llm.get_llm())
@@ -73,15 +81,19 @@ def create_run(body: CreateRun) -> dict:
         log.exception("analyze 실패 %s", rid)
         runs.write_status(rid, stage="error", error=f"분석 실패: {e}")
         raise HTTPException(500, f"분석 실패: {e}") from None
+    if body.auth is not None:  # LLM·캐시를 거친 뒤에 붙인다 — 비밀값은 run 디렉터리에만
+        sc = {**sc, "auth": body.auth}
+        runs.write_json(runs.run_dir(rid) / "scenario.json", sc)
     runs.write_status(rid, stage="analyzed", repo=body.repo, url=body.url, totalSec=body.totalSec)
-    return {"id": rid, "scenario": sc}
+    return {"id": rid, "scenario": auth.redact(sc)}
 
 
 @app.put("/api/runs/{rid}/scenario")
 def put_scenario(rid: str, body: dict) -> dict:
     d = _dir(rid)
     _not_busy(rid)
-    runs.write_json(d / "scenario.json", _validated("scenario", body))
+    stored = json.loads((d / "scenario.json").read_text()) if (d / "scenario.json").exists() else {}
+    runs.write_json(d / "scenario.json", _validated("scenario", auth.restore(body, stored)))
     return {"ok": True}
 
 
@@ -103,7 +115,8 @@ def get_run(rid: str) -> dict:
     for name in ("scenario", "scene"):
         if (f := d / f"{name}.json").exists():
             try:
-                out[name] = json.loads(f.read_text())
+                data = json.loads(f.read_text())
+                out[name] = auth.redact(data) if name == "scenario" else data
             except json.JSONDecodeError:  # 백그라운드 단계가 쓰는 중 — 다음 폴링에서 읽힌다
                 pass
     if (d / "preview.mp4").exists():

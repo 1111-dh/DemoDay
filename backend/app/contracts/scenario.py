@@ -33,9 +33,22 @@ class Step(BaseModel):
     caption: Annotated[str, Field(description='장면 자막 초안')]
 
 
+class Auth(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    steps: Annotated[list[Step], Field(min_length=1)]
+
+
 class Scenario(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     baseUrl: Annotated[AnyUrl, Field(description='배포 URL')]
+    auth: Annotated[
+        Auth | None,
+        Field(
+            description='캡처 전에 같은 브라우저 컨텍스트에서 한 번 실행하는 로그인. 스크린샷·capture.json·영상에 넣지 않는다. 사용자가 입력하며 LLM은 만들지 않는다. 예: 데모 로그인 URL goto, 또는 로그인 폼 type/click.'
+        ),
+    ] = None
     steps: Annotated[list[Step], Field(min_length=1)]

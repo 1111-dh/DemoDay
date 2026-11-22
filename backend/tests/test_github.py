@@ -166,12 +166,29 @@ def test_fetch_skips_failed_file_and_quotes_path(tmp_path):  # 리뷰 #3
     assert "/o/r/abc123/src/pages/C%23Guide.tsx" in calls
 
 
-def test_fetch_downloads_router_imports(tmp_path):  # 리뷰 #6
-    app = "import Search from './views/Search'\nconst S = lazy(() => import('@/screens/Home'))"
-    tree = _blobs("src/App.tsx", "src/views/Search.tsx", "src/screens/Home/index.tsx")
-    client = httpx.Client(transport=_repo_transport(tree, {"src/App.tsx": (200, app)}, []))
+def test_snapshot_reads_unfetched_files_on_demand_and_saves(tmp_path):  # 리뷰 #6
+    tree = _blobs("src/App.tsx", "src/views/Search.tsx")
+    calls: list[str] = []
+    client = httpx.Client(
+        transport=_repo_transport(tree, {"src/views/Search.tsx": (200, "S")}, calls)
+    )
     snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
-    assert {"src/views/Search.tsx", "src/screens/Home/index.tsx"} <= set(snap.files)
+    assert "src/views/Search.tsx" not in snap.files
+    assert snap.read("src/views/Search.tsx") == "S"
+    assert snap.read("src/nope.tsx") is None
+    snap.save()
+    again = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+    assert again.files["src/views/Search.tsx"] == "S"
+
+
+def test_want_file_other_frameworks():
+    assert want_file("app/pubspec.yaml")
+    assert want_file("src/routes/about/+page.svelte")
+    assert want_file("pages/index.vue")
+    assert want_file("lib/router/app_router.dart")
+    assert want_file("lib/main.dart")
+    assert not want_file("lib/widgets/card.dart")
+    assert not want_file(".svelte-kit/generated/root.svelte")
 
 
 def test_fetch_ignores_corrupt_cache(tmp_path):  # 리뷰 #7
