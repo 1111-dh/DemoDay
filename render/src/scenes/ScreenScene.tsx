@@ -1,14 +1,55 @@
 import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { ScreenScene as T } from "@demoday/contracts";
+import { theme } from "../theme";
 
 const W = 1280;
 const H = 720;
+/** 브라우저 카드 안 화면 배율. 화면 내부는 캡처 좌표(1280x720) 그대로 그리고 통째로 줄인다. */
+const S = 0.86;
+const BAR = 36;
+
+// TODO(계약 머지 후): highlight가 스키마에 들어오면 캐스트를 지운다 (이슈 #8)
+type Props = { scene: T & { highlight?: string[] }; domain?: string };
 
 /**
- * 캡처 화면 + 커서 이동 → 클릭 하이라이트 → 줌 인 + 자막.
- * 좌표는 캡처 viewport(1280x720) 기준 px. Composition도 같은 크기라 그대로 쓴다.
+ * 밝은 배경 위 브라우저 카드 + 커서 이동 → 클릭 하이라이트 → 줌 인 + 좌하단 자막.
+ * 좌표는 캡처 viewport(1280x720) 기준 px.
  */
-export const ScreenScene: React.FC<{ scene: T }> = ({ scene }) => {
+export const ScreenScene: React.FC<Props> = ({ scene, domain }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 0.6 * fps });
+
+  return (
+    <AbsoluteFill style={{ background: theme.bg, fontFamily: theme.font }}>
+      <div
+        style={{
+          position: "absolute",
+          left: (W - W * S) / 2,
+          top: (H - (H * S + BAR)) / 2 - 12,
+          width: W * S,
+          height: H * S + BAR,
+          borderRadius: 14,
+          overflow: "hidden",
+          background: "white",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)",
+          transform: `translateY(${interpolate(enter, [0, 1], [16, 0])}px)`,
+        }}
+      >
+        <AddressBar domain={domain} />
+        <div style={{ width: W * S, height: H * S, overflow: "hidden", position: "relative" }}>
+          <div style={{ width: W, height: H, transform: `scale(${S})`, transformOrigin: "0 0" }}>
+            <Screen scene={scene} />
+          </div>
+        </div>
+      </div>
+      {scene.caption && <Caption text={scene.caption} highlight={scene.highlight} />}
+    </AbsoluteFill>
+  );
+};
+
+/** 캡처 좌표계(1280x720) 안: 화면 + 커서 + 클릭 하이라이트 + 줌. */
+const Screen: React.FC<{ scene: T }> = ({ scene }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = (sec: number) => sec * fps;
@@ -27,40 +68,50 @@ export const ScreenScene: React.FC<{ scene: T }> = ({ scene }) => {
   const scale = zoom ? interpolate(z, [0, 1], [1, zoom.scale]) : 1;
 
   return (
-    <AbsoluteFill style={{ background: "black", overflow: "hidden" }}>
-      {/* 줌 기준점을 원점으로 잡으면 scale ≥ 1에서도 화면이 비지 않는다 */}
-      <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: zoom ? `${zoom.x}px ${zoom.y}px` : "center" }}>
-        <Img src={staticFile(`run/${scene.image}`)} style={{ width: W, height: H }} />
-        {cursor && (
-          <>
-            <div
-              style={{
-                position: "absolute",
-                left: cursor.x,
-                top: cursor.y,
-                width: 80,
-                height: 80,
-                marginLeft: -40,
-                marginTop: -40,
-                borderRadius: "50%",
-                border: "4px solid #facc15",
-                background: "rgba(250, 204, 21, 0.25)",
-                transform: `scale(${interpolate(press, [0, 1], [0.2, 1.2])})`,
-                opacity: interpolate(press, [0, 0.1, 1], [0, 1, 0.35]),
-              }}
-            />
-            <Cursor
-              x={interpolate(move, [0, 1], [W * 0.62, cursor.x])}
-              y={interpolate(move, [0, 1], [H * 0.78, cursor.y])}
-              pressed={frame >= s(0.8) && frame < s(0.95)}
-            />
-          </>
-        )}
-      </AbsoluteFill>
-      {scene.caption && <Caption text={scene.caption} />}
+    // 줌 기준점을 원점으로 잡으면 scale ≥ 1에서도 화면이 비지 않는다
+    <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: zoom ? `${zoom.x}px ${zoom.y}px` : "center" }}>
+      <Img src={staticFile(`run/${scene.image}`)} style={{ width: W, height: H }} />
+      {cursor && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: cursor.x,
+              top: cursor.y,
+              width: 80,
+              height: 80,
+              marginLeft: -40,
+              marginTop: -40,
+              borderRadius: "50%",
+              border: `4px solid ${theme.accent}`,
+              background: "rgba(242, 107, 29, 0.18)",
+              transform: `scale(${interpolate(press, [0, 1], [0.2, 1.2])})`,
+              opacity: interpolate(press, [0, 0.1, 1], [0, 1, 0.35]),
+            }}
+          />
+          <Cursor
+            x={interpolate(move, [0, 1], [W * 0.62, cursor.x])}
+            y={interpolate(move, [0, 1], [H * 0.78, cursor.y])}
+            pressed={frame >= s(0.8) && frame < s(0.95)}
+          />
+        </>
+      )}
     </AbsoluteFill>
   );
 };
+
+const AddressBar: React.FC<{ domain?: string }> = ({ domain }) => (
+  <div style={{ height: BAR, display: "flex", alignItems: "center", gap: 8, padding: "0 14px", background: "#ecebe7", borderBottom: "1px solid #dddcd6" }}>
+    {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
+      <div key={c} style={{ width: 11, height: 11, borderRadius: "50%", background: c }} />
+    ))}
+    {domain && (
+      <div style={{ marginLeft: 16, flex: 1, maxWidth: 420, height: 22, borderRadius: 6, background: "white", color: theme.sub, fontSize: 13, display: "flex", alignItems: "center", padding: "0 12px" }}>
+        {domain}
+      </div>
+    )}
+  </div>
+);
 
 const Cursor: React.FC<{ x: number; y: number; pressed: boolean }> = ({ x, y, pressed }) => (
   <svg
@@ -73,30 +124,39 @@ const Cursor: React.FC<{ x: number; y: number; pressed: boolean }> = ({ x, y, pr
   </svg>
 );
 
-const Caption: React.FC<{ text: string }> = ({ text }) => {
+/** caption 안의 highlight 단어를 주황으로. */
+function emphasize(text: string, words: string[] = []) {
+  const ws = words.filter(Boolean);
+  if (!ws.length) return text;
+  const re = new RegExp(`(${ws.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  return text.split(re).map((part, i) => (ws.includes(part) ? <span key={i} style={{ color: theme.accent }}>{part}</span> : part));
+}
+
+const Caption: React.FC<{ text: string; highlight?: string[] }> = ({ text, highlight }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const p = spring({ frame, fps, delay: 0.3 * fps, config: { damping: 200 } });
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 48 }}>
-      <div
-        style={{
-          maxWidth: W * 0.8,
-          padding: "14px 28px",
-          borderRadius: 14,
-          background: "rgba(11, 16, 32, 0.82)",
-          color: "white",
-          fontSize: 36,
-          fontWeight: 600,
-          fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
-          textAlign: "center",
-          lineHeight: 1.35,
-          opacity: p,
-          transform: `translateY(${interpolate(p, [0, 1], [24, 0])}px)`,
-        }}
-      >
-        {text}
-      </div>
-    </AbsoluteFill>
+    <div
+      style={{
+        position: "absolute",
+        left: 56,
+        bottom: 34,
+        maxWidth: W * 0.62,
+        padding: "14px 24px",
+        borderRadius: 10,
+        background: theme.label,
+        color: "white",
+        fontSize: 32,
+        fontWeight: 700,
+        lineHeight: 1.35,
+        ...theme.keepAll,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+        opacity: p,
+        transform: `translateY(${interpolate(p, [0, 1], [20, 0])}px)`,
+      }}
+    >
+      {emphasize(text, highlight)}
+    </div>
   );
 };
