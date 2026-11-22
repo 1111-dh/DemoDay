@@ -50,6 +50,10 @@ class RepoError(Exception):
     """사용자에게 그대로 보여줄 수 있는 레포 수집 오류."""
 
 
+class GitHubUnavailable(RepoError):
+    """GitHub 에 닿지 못함(연결·rate limit·5xx). 캐시가 있으면 대신 쓴다 — 시연장 네트워크 대비."""
+
+
 @dataclass
 class RepoSnapshot:
     owner: str
@@ -163,14 +167,29 @@ def _get(client: httpx.Client, url: str, headers: dict[str, str]) -> httpx.Respo
     try:
         res = client.get(url, headers=headers)
     except httpx.HTTPError as e:
-        raise RepoError(f"GitHub 연결 실패: {e}") from e
+        raise GitHubUnavailable(f"GitHub 연결 실패: {e}") from e
     if res.status_code == 404:
         raise RepoError("레포를 찾을 수 없습니다 (공개 레포인지 확인하세요)")
     if res.status_code in (403, 429) and res.headers.get("x-ratelimit-remaining") == "0":
-        raise RepoError("GitHub rate limit 초과 — 서버 .env 에 GITHUB_TOKEN 을 설정하세요")
+        raise GitHubUnavailable("GitHub rate limit 초과 — 서버 .env 에 GITHUB_TOKEN 을 설정하세요")
+    if res.status_code >= 500:
+        raise GitHubUnavailable(f"GitHub 응답 오류 {res.status_code}: {url}")
     if res.status_code != 200:
         raise RepoError(f"GitHub 응답 오류 {res.status_code}: {url}")
     return res
+
+
+def _latest_cached(owner: str, repo: str, cache_dir: Path) -> RepoSnapshot | None:
+    """이 레포의 가장 최근 스냅샷 캐시 (깨진 파일은 건너뜀)."""
+    files = sorted(cache_dir.glob(f"{owner}__{repo}__*.json"), key=lambda f: f.stat().st_mtime)
+    for f in reversed(files):
+        try:
+            snap = RepoSnapshot.from_json(f.read_text())
+        except (ValueError, TypeError, KeyError):
+            continue
+        snap.cache_path = f
+        return snap
+    return None
 
 
 def fetch_repo(
@@ -182,8 +201,14 @@ def fetch_repo(
     if token := os.environ.get("GITHUB_TOKEN"):
         headers["Authorization"] = f"Bearer {token}"
 
-    branch = _get(client, f"{API}/repos/{owner}/{repo}", headers).json()["default_branch"]
-    sha = _get(client, f"{API}/repos/{owner}/{repo}/commits/{branch}", headers).json()["sha"]
+    try:
+        branch = _get(client, f"{API}/repos/{owner}/{repo}", headers).json()["default_branch"]
+        sha = _get(client, f"{API}/repos/{owner}/{repo}/commits/{branch}", headers).json()["sha"]
+    except GitHubUnavailable as e:
+        if (snap := _latest_cached(owner, repo, cache_dir)) is None:
+            raise
+        log.warning("%s — 캐시된 %s/%s@%s 사용", e, owner, repo, snap.sha[:7])
+        return snap
 
     cache = cache_dir / f"{owner}__{repo}__{sha}.json"
     snap = None

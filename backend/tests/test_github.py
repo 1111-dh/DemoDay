@@ -196,3 +196,42 @@ def test_fetch_ignores_corrupt_cache(tmp_path):  # 리뷰 #7
     client = httpx.Client(transport=_repo_transport(_blobs("README.md"), {}, []))
     snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
     assert snap.files == {"README.md": "x"}
+
+
+def _cached(tmp_path, sha: str, files: dict) -> None:
+    from app.github import RepoSnapshot
+
+    snap = RepoSnapshot(owner="o", repo="r", sha=sha, paths=list(files), files=files)
+    (tmp_path / f"o__r__{sha}.json").write_text(snap.to_json())
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.ConnectError("offline"),
+        httpx.Response(403, headers={"x-ratelimit-remaining": "0"}, json={}),
+        httpx.Response(502, json={}),
+    ],
+)
+def test_fetch_uses_latest_cache_when_github_unavailable(tmp_path, response):  # 시연 대비
+    import os
+
+    _cached(tmp_path, "old", {"README.md": "old"})
+    _cached(tmp_path, "new", {"README.md": "new"})
+    os.utime(tmp_path / "o__r__old.json", (1, 1))
+
+    def handler(request):
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+    assert (snap.sha, snap.files["README.md"]) == ("new", "new")
+
+
+def test_fetch_404_still_errors_even_with_cache(tmp_path):
+    _cached(tmp_path, "old", {"README.md": "old"})
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(404, json={})))
+    with pytest.raises(RepoError, match="찾을 수 없"):
+        fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
