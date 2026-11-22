@@ -2,6 +2,7 @@
 
   uv run python -m app.cli analyze --repo <github> --url <배포> --out runs/<id>/scenario.json
   uv run python -m app.cli scene   --run runs/<id> [--total-sec 60]
+  uv run python -m app.cli facts   --repo <github>        # 분석 결과(RepoFacts)만 출력
 
 각 단계는 결과 JSON을 쓰기 전에 schema_errors()로 검증하고, 위반이 있으면 exit 1.
 """
@@ -10,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+
+from app.github import RepoError
 
 
 def analyze(repo: str, url: str, out: str) -> None:
@@ -23,6 +26,13 @@ def scene(run: str, total_sec: float) -> None:
     raise NotImplementedError("scene 단계 미구현 (A)")
 
 
+def facts(repo: str) -> None:
+    from app.analyze.facts import build_facts
+    from app.github import fetch_repo
+
+    print(build_facts(fetch_repo(repo)).to_json())
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -33,12 +43,19 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("scene")
     s.add_argument("--run", required=True)
     s.add_argument("--total-sec", type=float, default=60)
+    f = sub.add_parser("facts")
+    f.add_argument("--repo", required=True)
     args = p.parse_args(argv)
     try:
         if args.cmd == "analyze":
             analyze(args.repo, args.url, args.out)
+        elif args.cmd == "facts":
+            facts(args.repo)
         else:
             scene(args.run, args.total_sec)
+    except RepoError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 1
     except NotImplementedError as e:
         print(f"✗ {e}", file=sys.stderr)
         return 2

@@ -119,3 +119,66 @@ def next_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
             path = "/" + "/".join(parts)
             routes.setdefault(path, Route(path, _is_dynamic(path), file))
     return _sort(list(routes.values()))
+
+
+_CODE = (".tsx", ".jsx", ".ts", ".js")
+_IMPORT = re.compile(r"""import\s+(\w+)\s+from\s+["'](\.{1,2}/[^"']+)["']""")
+_ROUTE_TAG = re.compile(r"<Route\b")
+_OBJ_PATH = re.compile(r"""\bpath\s*:\s*["']([^"']*)["']""")
+
+
+def _resolve_import(snap: RepoSnapshot, from_file: str, spec: str) -> str | None:
+    parts = from_file.split("/")[:-1]
+    for seg in spec.split("/"):
+        if seg == "..":
+            parts = parts[:-1]
+        elif seg != ".":
+            parts.append(seg)
+    base = "/".join(parts)
+    known = set(snap.paths) | set(snap.files)
+    if base in known:
+        return base
+    for cand in [base + ext for ext in _CODE] + [f"{base}/index{ext}" for ext in _CODE]:
+        if cand in known:
+            return cand
+    return None
+
+
+def _norm_react_path(raw: str) -> str | None:
+    raw = raw.strip()
+    if raw in ("", "*", "/*"):
+        return None
+    return raw if raw.startswith("/") else "/" + raw
+
+
+def react_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
+    routes: dict[str, Route] = {}
+    for file, src in snap.files.items():
+        if not file.endswith(_CODE) or _rel(file, root.dir) is None:
+            continue
+        imports = dict(_IMPORT.findall(src))
+        hits: list[tuple[str, str | None]] = []
+        for m in _ROUTE_TAG.finditer(src):
+            window = src[m.end() : m.end() + 300].split("<Route", 1)[0]
+            p = re.search(r"""\bpath\s*=\s*["']([^"']*)["']""", window)
+            el = re.search(r"\belement\s*=\s*\{\s*<(\w+)", window)
+            if p:
+                hits.append((p.group(1), el.group(1) if el else None))
+        for m in _OBJ_PATH.finditer(src):
+            start = src.rfind("{", 0, m.start())
+            end = src.find("}", m.end())
+            window = src[start if start >= 0 else m.start() : end if end >= 0 else len(src)]
+            el = re.search(r"\belement\s*:\s*<(\w+)", window) or re.search(
+                r"\bComponent\s*:\s*(\w+)", window
+            )
+            hits.append((m.group(1), el.group(1) if el else None))
+        for raw, comp in hits:
+            path = _norm_react_path(raw)
+            if path is None or path in routes:
+                continue
+            target = None
+            if comp and comp in imports:
+                target = _resolve_import(snap, file, imports[comp])
+            dynamic = ":" in path or "*" in path
+            routes[path] = Route(path, dynamic, target or file)
+    return _sort(list(routes.values()))
