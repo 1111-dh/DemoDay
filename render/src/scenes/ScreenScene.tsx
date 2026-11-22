@@ -8,8 +8,7 @@ const H = 720;
 const S = 0.86;
 const BAR = 36;
 
-// TODO(계약 머지 후): highlight가 스키마에 들어오면 캐스트를 지운다 (이슈 #8)
-type Props = { scene: T & { highlight?: string[] }; domain?: string };
+type Props = { scene: T; domain?: string };
 
 /**
  * 밝은 배경 위 브라우저 카드 + 커서 이동 → 클릭 하이라이트 → 줌 인 + 좌하단 자막.
