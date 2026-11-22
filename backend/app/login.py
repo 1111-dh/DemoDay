@@ -29,6 +29,17 @@ def _form(page: PageFacts) -> tuple[list[Element], list[Element]]:
     return inputs, buttons
 
 
+def _button_selector(button: Element) -> str:
+    """text=로그인 은 화면에 안 보이는 제목(<h2 class=sr-only>로그인</h2>)에 먼저 걸릴 수 있다.
+
+    HTML 버튼은 글자가 정확히 같은 <button>만 가리킨다. role 셀렉터(Flutter)는 이미 버튼만 가리킨다.
+    """
+    if not button.selector.startswith("text="):
+        return button.selector
+    text = button.text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'button:text-is("{text}")'
+
+
 def login_steps(facts: RepoFacts, username: str, password: str) -> dict | None:
     """로그인 폼을 못 찾으면 None → API 400.
 
@@ -51,7 +62,7 @@ def login_steps(facts: RepoFacts, username: str, password: str) -> dict | None:
             {"action": "goto", "path": page.path, "caption": "로그인"},
             {"action": "type", "selector": user.selector, "value": username, "caption": "아이디"},
             {"action": "type", "selector": pw.selector, "value": password, "caption": "비밀번호"},
-            {"action": "click", "selector": submit.selector, "caption": "로그인"},
+            {"action": "click", "selector": _button_selector(submit), "caption": "로그인"},
         ]
         return {"steps": [{"id": i, **s} for i, s in enumerate(steps, start=1)]}
     return None
