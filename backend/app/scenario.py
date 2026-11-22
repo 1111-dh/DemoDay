@@ -180,6 +180,15 @@ def build_scenario(
     return result or default_scenario(facts, base_url)
 
 
+def scenario_cache_path(
+    snap: RepoSnapshot, base_url: str, prompt: str | None, cache_dir: Path = paths.CACHE
+) -> Path:
+    """이 커밋·배포 URL·프롬프트·시나리오 규칙 버전의 LLM 시나리오 캐시 파일."""
+    raw_key = f"v{SCENARIO_VERSION}|{_base(base_url)}|{normalize_prompt(prompt) or ''}"
+    key = hashlib.sha1(raw_key.encode()).hexdigest()[:8]
+    return cache_dir / f"scenario__{snap.owner}__{snap.repo}__{snap.sha}__{key}.json"
+
+
 def analyze(
     repo_url: str,
     base_url: str,
@@ -194,9 +203,7 @@ def analyze(
     prompt = normalize_prompt(prompt)
     snap = fetch(repo_url)
     facts = build_facts(snap)
-    raw_key = f"v{SCENARIO_VERSION}|{_base(base_url)}|{prompt or ''}"
-    key = hashlib.sha1(raw_key.encode()).hexdigest()[:8]
-    cache = cache_dir / f"scenario__{snap.owner}__{snap.repo}__{snap.sha}__{key}.json"
+    cache = scenario_cache_path(snap, base_url, prompt, cache_dir)
 
     if cache.exists():
         scenario = json.loads(cache.read_text())
