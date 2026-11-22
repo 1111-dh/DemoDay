@@ -23,7 +23,8 @@ from app.llm import LLM, generate
 
 MAX_STEPS = 7
 MAX_PROMPT = 500
-SCENARIO_VERSION = 6  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
+SCENARIO_VERSION = 7  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -57,15 +58,19 @@ _STATEFUL = re.compile(r"(?:^|/)(?:results?|loading|success|complete|callback)(?
 _DANGER = re.compile(
     r"로그아웃|log ?out|sign ?out|탈퇴|삭제|delete|remove|결제|구매|purchase|checkout|pay\b"
     r"|초기화|reset|송금|환불|refund|unsubscribe|구독 ?취소"
-    r"|반려|거절|reject|decline"  # 데모 계정의 실제 데이터를 되돌릴 수 없게 바꾼다
     r"|다시 ?시도|재시도|retry|try again",  # 에러 상태에만 보이는 버튼 — 데모 흐름이 아니다
     re.IGNORECASE,
 )
 
 
+# 승인·반려 버튼 자체 — 데모 계정 데이터를 되돌릴 수 없게 바꾼다(심사용 '승인 대기 1개'가
+# 첫 캡처에 사라진다). "승인 대기 보기" 같은 이동 링크는 두고, 글자 전체가 이 말일 때만 막는다
+_DECIDE = re.compile(r"^\s*(?:승인|반려|거절|approve|reject|decline)(?:하기)?\s*$", re.IGNORECASE)
+
+
 def _safe(element: dict | Element) -> bool:
     text = element["text"] if isinstance(element, dict) else element.text
-    return not _DANGER.search(text)
+    return not (_DANGER.search(text) or _DECIDE.match(text))
 
 
 REFERENCE = (Path(__file__).parent / "prompts" / "reference.md").read_text().rstrip("\n")
@@ -183,14 +188,26 @@ def _min_steps(facts: RepoFacts) -> int:
 
 
 def _user_message(facts: RepoFacts, prompt: str | None = None) -> str:
-    data = json.loads(facts.to_json())
-    data["pages"] = [
-        {**p, "elements": [e for e in p["elements"] if _safe(e)]}
-        for p in data["pages"]
-        if _demo_page(p["path"], p["dynamic"])
-        or (p["dynamic"] and p["elements"] and _shown(p["path"]))
+    """LLM 입력은 작게 — 무료 플랜 분당 토큰 한도(Groq 8000)를 넘으면 413 으로 거절된다.
+
+    파일 경로·의존성 목록은 빼고, 요소는 셀렉터 문자열만, JSON 은 공백 없이.
+    """
+    pages = [
+        {
+            "path": p.path,
+            "dynamic": p.dynamic,
+            "elements": [e.selector for e in p.elements if _safe(e)],
+        }
+        for p in facts.pages
+        if _demo_page(p.path, p.dynamic) or (p.dynamic and p.elements and _shown(p.path))
     ]
-    user = "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, indent=2)
+    data = {
+        "name": facts.name,
+        "summary": facts.summary,
+        "readme": facts.readme[:README_FOR_SCENARIO],
+        "pages": pages,
+    }
+    user = "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     return with_reference(user, prompt, "화면 순서와 보여줄 기능에만 반영한다")
 
 

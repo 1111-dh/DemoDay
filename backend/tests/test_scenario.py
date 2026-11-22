@@ -290,6 +290,8 @@ def _danger_facts():
         Element("button", "Retry", "text=Retry"),
         Element("button", "반려", "text=반려"),
         Element("button", "Reject", "text=Reject"),
+        Element("button", "승인", "text=승인"),
+        Element("button", "Approve", "text=Approve"),
     ]
     return facts(pages=[PageFacts("/", False, "app/page.tsx", els)])
 
@@ -308,6 +310,8 @@ def test_dangerous_buttons_hidden_from_llm():  # 로그아웃·삭제·탈퇴·�
         "Retry",
         "text=반려",
         "Reject",
+        "text=승인",
+        "Approve",
     ]:
         assert word not in shown, word
     assert "추천받기" in shown
@@ -419,3 +423,34 @@ def test_stay_on_dynamic_page_after_type():
         ]
     )
     assert [s["action"] for s in ground(draft, f)] == ["goto", "click", "type", "click"]
+
+
+def test_user_message_is_compact_for_free_tier():  # Groq 무료 TPM 8000 — 요청이 크면 413
+    from app.scenario import README_FOR_SCENARIO, _user_message
+
+    many = [
+        PageFacts(
+            f"/p{i}",
+            False,
+            f"src/pages/very/long/path/P{i}.tsx",
+            [Element("button", f"버튼{i}-{j}", f"text=버튼{i}-{j}") for j in range(15)],
+        )
+        for i in range(30)
+    ]
+    f = facts(pages=many)
+    f.stack = [f"@scope/dep-{i}" for i in range(80)]
+    f.readme = "가" * 5000
+    msg = _user_message(f)
+    assert "src/pages/very" not in msg and "@scope/dep" not in msg  # 파일 경로·의존성 목록 안 보냄
+    assert '"text=버튼0-0"' in msg and '"kind"' not in msg  # 요소는 셀렉터만
+    assert msg.count("가") == README_FOR_SCENARIO == 1200
+    assert len(msg) < 9000
+
+
+def test_approval_navigation_links_still_allowed():
+    from app.scenario import _safe
+
+    assert _safe(Element("link", "승인 대기 보기", "text=승인 대기 보기"))
+    assert _safe(Element("link", "확인 요청 보기", "text=확인 요청 보기"))
+    assert not _safe(Element("button", "승인하기", "text=승인하기"))
+    assert not _safe(Element("button", " 반려 ", "text=반려"))
