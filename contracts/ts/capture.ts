@@ -9,6 +9,19 @@ export interface Capture {
     h: number;
   };
   shots: Shot[];
+  /**
+   * 세션 녹화 파일, run 디렉터리 기준 상대경로 (예: capture.webm). 녹화 실패 시 생략. 로그인 과정은 들어가지 않는다
+   */
+  video?: string;
+  /**
+   * 로그인 장면용 정지 화면 (입력칸을 가린 상태). 없으면 로그인 장면 없이 간다
+   */
+  login?: {
+    /**
+     * 예: shots/login-1.png (run 디렉터리 기준)
+     */
+    images: string[];
+  };
 }
 export interface Shot {
   stepId: number;
@@ -28,8 +41,16 @@ export interface Shot {
    * 캡처 시작 기준 화면 전환 시점(ms)
    */
   atMs?: number;
+  clip?: Clip;
 }
 export interface Point {
   x: number;
   y: number;
+}
+/**
+ * 이 단계가 video에서 차지하는 구간(녹화 시작 기준 ms). 동작 시작 ~ 화면 안정 직후
+ */
+export interface Clip {
+  startMs: number;
+  endMs: number;
 }

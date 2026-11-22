@@ -22,6 +22,10 @@ export interface TitleScene {
   transition?: Transition;
   text: string;
   subtitle?: string;
+  /**
+   * 제목 위 작은 라벨 (예: "01", "문제"). 있으면 장 구분 카드로 그린다
+   */
+  kicker?: string;
 }
 export interface ScreenScene {
   type: "screen";
@@ -34,6 +38,11 @@ export interface ScreenScene {
   zoom?: Zoom;
   cursor?: Point;
   caption?: string;
+  /**
+   * caption 안에서 강조할 단어
+   */
+  highlight?: string[];
+  video?: VideoClip;
 }
 export interface Zoom {
   x: number;
@@ -43,6 +52,17 @@ export interface Zoom {
 export interface Point {
   x: number;
   y: number;
+}
+/**
+ * 있으면 이 구간을 재생하고, image는 대체 화면(poster)으로 쓴다
+ */
+export interface VideoClip {
+  /**
+   * run 디렉터리 기준. 예: capture.webm
+   */
+  src: string;
+  startMs: number;
+  endMs: number;
 }
 export interface ArchitectureScene {
   type: "architecture";

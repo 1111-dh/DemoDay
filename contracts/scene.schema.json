@@ -29,6 +29,17 @@
       "required": ["x", "y"],
       "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
     },
+    "VideoClip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["src", "startMs", "endMs"],
+      "description": "있으면 이 구간을 재생하고, image는 대체 화면(poster)으로 쓴다",
+      "properties": {
+        "src": { "type": "string", "description": "run 디렉터리 기준. 예: capture.webm" },
+        "startMs": { "type": "integer", "minimum": 0 },
+        "endMs": { "type": "integer", "minimum": 0 }
+      }
+    },
     "Zoom": {
       "type": "object",
       "additionalProperties": false,
@@ -48,7 +59,8 @@
         "durationSec": { "type": "number", "exclusiveMinimum": 0 },
         "transition": { "$ref": "#/$defs/Transition" },
         "text": { "type": "string" },
-        "subtitle": { "type": "string" }
+        "subtitle": { "type": "string" },
+        "kicker": { "type": "string", "description": "제목 위 작은 라벨 (예: \"01\", \"문제\"). 있으면 장 구분 카드로 그린다" }
       }
     },
     "ScreenScene": {
@@ -62,7 +74,9 @@
         "image": { "type": "string", "description": "run 디렉터리 기준 상대경로. 예: shots/2.png" },
         "zoom": { "$ref": "#/$defs/Zoom" },
         "cursor": { "$ref": "#/$defs/Point" },
-        "caption": { "type": "string" }
+        "caption": { "type": "string" },
+        "highlight": { "type": "array", "items": { "type": "string" }, "description": "caption 안에서 강조할 단어" },
+        "video": { "$ref": "#/$defs/VideoClip" }
       }
     },
     "ArchitectureScene": {

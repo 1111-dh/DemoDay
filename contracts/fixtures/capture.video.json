@@ -1,0 +1,4 @@
+{"viewport": {"w": 1280, "h": 720}, "video": "capture.webm", "login": {"images": ["shots/1.png", "shots/2.png"]}, "shots": [
+  {"stepId": 1, "image": "shots/1.png", "click": null, "status": "ok", "atMs": 0, "clip": {"startMs": 0, "endMs": 2500}},
+  {"stepId": 2, "image": "shots/2.png", "click": {"x": 640, "y": 120}, "status": "ok", "atMs": 2500, "clip": {"startMs": 2500, "endMs": 6000}}
+]}
