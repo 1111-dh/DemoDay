@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import time
 from collections.abc import Callable
 from typing import Protocol
 
@@ -50,6 +52,23 @@ class ClaudeLLM:
         return res.parsed_output
 
 
+RATE_RETRIES = 2  # 429(분당 토큰 한도)면 안내 시간만큼 기다렸다 같은 요청을 다시 보낸다
+MAX_RATE_WAIT = 30.0
+_TRY_AGAIN = re.compile(r"try again in ([\d.]+)\s*(ms|s)\b", re.IGNORECASE)
+
+
+def _rate_wait(res: httpx.Response) -> float:
+    """429 안내 "try again in 5.9s/640ms"(없으면 retry-after, 그것도 없으면 5초) + 0.5초."""
+    if m := _TRY_AGAIN.search(res.text):
+        sec = float(m.group(1)) / (1000 if m.group(2).lower() == "ms" else 1)
+    else:
+        try:
+            sec = float(res.headers.get("retry-after", "5"))
+        except ValueError:
+            sec = 5.0
+    return min(MAX_RATE_WAIT, sec + 0.5)
+
+
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "openai/gpt-oss-120b"
 
@@ -64,8 +83,10 @@ class OpenAICompatLLM:
         api_key: str,
         model: str,
         client: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         self.url = base_url.rstrip("/") + "/chat/completions"
+        self.sleep = sleep
         self.headers = {"Authorization": f"Bearer {api_key}"}
         self.model = model
         self.client = client or httpx.Client(timeout=90)
@@ -82,11 +103,17 @@ class OpenAICompatLLM:
                 "json_schema": {"name": output.__name__, "schema": output.model_json_schema()},
             },
         }
-        try:
-            res = self.client.post(self.url, headers=self.headers, json=body)
-        except httpx.HTTPError as e:
-            log.warning("LLM 연결 실패: %s", type(e).__name__)
-            return None
+        for attempt in range(RATE_RETRIES + 1):
+            try:
+                res = self.client.post(self.url, headers=self.headers, json=body)
+            except httpx.HTTPError as e:
+                log.warning("LLM 연결 실패: %s", type(e).__name__)
+                return None
+            if res.status_code != 429 or attempt == RATE_RETRIES:
+                break
+            wait = _rate_wait(res)
+            log.warning("LLM 분당 한도(429) — %.1f초 뒤 다시 시도", wait)
+            self.sleep(wait)
         if res.status_code != 200:
             log.warning("LLM API 오류 %s: %s", res.status_code, res.text[:300])
             return None
