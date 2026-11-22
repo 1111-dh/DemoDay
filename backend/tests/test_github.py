@@ -235,3 +235,13 @@ def test_fetch_404_still_errors_even_with_cache(tmp_path):
     client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(404, json={})))
     with pytest.raises(RepoError, match="찾을 수 없"):
         fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+
+
+def test_lazy_loader_reads_backend_manifests(tmp_path):  # 아키텍처 장면용 백엔드 의존성
+    calls: list[str] = []
+    tree = _blobs("README.md", "src/App.tsx", "backend/requirements.txt", "backend/notes.md")
+    raw = {"backend/requirements.txt": (200, "fastapi==0.110\n")}
+    client = httpx.Client(transport=_repo_transport(tree, raw, calls))
+    snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+    assert snap.read("backend/requirements.txt") == "fastapi==0.110\n"
+    assert snap.read("backend/notes.md") is None  # 매니페스트·코드가 아닌 파일은 받지 않는다

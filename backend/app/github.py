@@ -41,6 +41,20 @@ _SKIP_DIRS = (
 )
 CODE_EXT = (".tsx", ".jsx", ".ts", ".js", ".vue", ".svelte", ".dart")
 _MANIFESTS = ("package.json", "pubspec.yaml")
+# 아키텍처 장면용 백엔드 매니페스트 — 처음엔 받지 않고 분석 중 snap.read 로만 받는다
+SERVICE_MANIFESTS = (
+    "requirements.txt",
+    "pyproject.toml",
+    "build.gradle",
+    "build.gradle.kts",
+    "pom.xml",
+    "go.mod",
+    "package.json",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+)
 _ROUTE_HINTS = ("app/", "pages/", "routes", "router", "App.", "main.")
 log = logging.getLogger(__name__)
 _TEST_HINT = re.compile(r"(\.test\.|\.spec\.|\.stories\.|__tests__/)")
@@ -155,7 +169,9 @@ def _lazy_loader(
     budget = [LAZY_FILES]
 
     def load(path: str) -> str | None:
-        if budget[0] <= 0 or not path.endswith(CODE_EXT) or sizes.get(path, 0) > MAX_BYTES:
+        name = path.rsplit("/", 1)[-1]
+        readable = path.endswith(CODE_EXT) or name in SERVICE_MANIFESTS
+        if budget[0] <= 0 or not readable or sizes.get(path, 0) > MAX_BYTES:
             return None
         budget[0] -= 1
         return _raw(client, owner, repo, sha, path)

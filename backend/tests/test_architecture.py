@@ -47,3 +47,21 @@ def test_sveltekit_and_flutter_nodes():
         "Flutter",
         "Supabase",
     ]
+
+
+def test_backend_services_join_the_chain():  # 프론트 package.json 밖의 백엔드 (모노레포)
+    f = facts(["react", "vite"], "react")
+    f.services = ["fastapi", "postgres", "redis", "openai"]
+    assert infer_architecture(f)["nodes"] == ["React + Vite", "FastAPI", "PostgreSQL", "OpenAI API"]
+
+
+def test_flutter_with_django_backend():
+    f = facts(["go_router"], "flutter")
+    f.services = ["django", "mysql2"]
+    assert infer_architecture(f)["nodes"] == ["Flutter", "Django", "MySQL"]
+
+
+def test_spring_boot_node():
+    f = facts(["next", "react"])
+    f.services = ["spring-boot", "postgres"]
+    assert infer_architecture(f)["nodes"] == ["Next.js", "Spring Boot", "PostgreSQL"]
