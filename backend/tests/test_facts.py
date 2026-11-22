@@ -194,3 +194,55 @@ def test_dynamic_route_pages_get_elements():  # 클릭으로 들어가는 동적
     )
     page = next(p for p in build_facts(snap).pages if p.path == "/items/:id")
     assert page.dynamic and [e.text for e in page.elements] == ["장바구니 담기"]
+
+
+def test_layout_route_elements_join_child_pages():  # <Route element={<WorkspaceLayout />}>
+    snap = make_snap(
+        {
+            "package.json": pkg({"react": "19", "react-router-dom": "7"}),
+            "src/App.tsx": (
+                'import Layout from "./Layout";\nimport Dash from "./pages/Dash";\n'
+                'import RequireAuth from "./RequireAuth";\n'
+                "<Routes><Route element={<RequireAuth />}>"
+                '<Route path="w/:id" element={<Layout />}>'
+                '<Route path="dashboard" element={<Dash />} />'
+                "</Route></Route></Routes>"
+            ),
+            "src/Layout.tsx": (
+                '<nav><a href="meetings">회의록</a><a href="tasks">태스크</a></nav><Outlet />'
+            ),
+            "src/RequireAuth.tsx": "return <Outlet />",
+            "src/pages/Dash.tsx": "<button>전체 보기</button>",
+        }
+    )
+    page = next(p for p in build_facts(snap).pages if p.path == "/w/:id/dashboard")
+    assert [e.text for e in page.elements] == ["전체 보기", "회의록", "태스크"]
+
+
+def test_layout_tabs_from_model_config_and_hooks_skipped():  # AppHeader → ../model/shellTabs
+    hooks = {f"src/lib/h{i}.ts": f"export const useH{i} = () => 1" for i in range(14)}
+    hook_imports = "".join(f'import {{ useH{i} }} from "./lib/h{i}";\n' for i in range(14))
+    snap = make_snap(
+        {
+            **hooks,
+            "package.json": pkg({"react": "19", "react-router-dom": "7"}),
+            "src/App.tsx": (
+                'import Layout from "./Layout";\nimport Dash from "./pages/Dash";\n'
+                '<Routes><Route path="w/:id" element={<Layout />}>'
+                '<Route path="dashboard" element={<Dash />} /></Route></Routes>'
+            ),
+            "src/Layout.tsx": hook_imports
+            + 'import { AppHeader } from "./shell/AppHeader";\n<AppHeader />',
+            "src/shell/AppHeader.tsx": (
+                'import { TABS } from "../model/shellTabs";\n'
+                "TABS.map(t => <NavLink to={t.to}>{t.label}</NavLink>)"
+            ),
+            "src/model/shellTabs.ts": (
+                "export const TABS = [{ label: '회의록', to: 'meetings' }, "
+                "{ label: '태스크', to: 'tasks' }]"
+            ),
+            "src/pages/Dash.tsx": "<button>전체 보기</button>",
+        }
+    )
+    page = next(p for p in build_facts(snap).pages if p.path == "/w/:id/dashboard")
+    assert [e.text for e in page.elements] == ["전체 보기", "회의록", "태스크"]

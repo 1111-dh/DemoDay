@@ -100,25 +100,33 @@ def jsx_routes(src: str) -> list[tuple[str, str, bool]]:
 
     path 없는 레이아웃 Route는 경로에 끼지 않고, index Route는 부모 경로가 된다.
     """
+    return [(p, t, lay) for p, t, lay, _ in jsx_routes_with_parents(src)]
+
+
+def jsx_routes_with_parents(src: str) -> list[tuple[str, str, bool, list[str]]]:
+    """jsx_routes + 이 Route 를 감싸는 조상 <Route> 태그들(바깥부터) — 레이아웃 컴포넌트 찾기용."""
     events = [(m.start(), m.end()) for m in _ROUTE_TAG.finditer(src)]
     events += [(m.start(), -1) for m in _ROUTE_CLOSE.finditer(src)]
     stack: list[str | None] = []
-    hits: list[tuple[str, str, bool]] = []
+    tags: list[str] = []  # stack 과 같은 깊이의 조상 태그
+    hits: list[tuple[str, str, bool, list[str]]] = []
     for _, after in sorted(events):
         if after < 0:
             if stack:
                 stack.pop()
+                tags.pop()
             continue
         end, self_closing = tag_end(src, after)
         tag = src[after:end]
         p = re.search(r"""\bpath\s*=\s*["']([^"']*)["']""", tag)
         raw = p.group(1).strip() if p else None
         if raw is not None:
-            hits.append((join_paths([*stack, raw]), tag, not self_closing))
+            hits.append((join_paths([*stack, raw]), tag, not self_closing, list(tags)))
         elif re.search(r"\bindex\b", tag):
-            hits.append((join_paths(stack), tag, False))
+            hits.append((join_paths(stack), tag, False, list(tags)))
         if not self_closing:
             stack.append(raw)
+            tags.append(tag)
     return hits
 
 
@@ -143,21 +151,25 @@ def code_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
         if not file.endswith(_JS) or (root.dir and not file.startswith(root.dir + "/")):
             continue
         imports = import_map(src)
-        found: list[tuple[str, str | None, bool]] = []
-        for path, tag, layout in jsx_routes(src):
-            found.append((path, _target(tag, _JSX_COMP, imports, file, known, root), layout))
+        found: list[tuple[str, str | None, bool, tuple[str, ...]]] = []
+        for path, tag, layout, parents in jsx_routes_with_parents(src):
+            target = _target(tag, _JSX_COMP, imports, file, known, root)
+            wraps = [_target(t, _JSX_COMP, imports, file, known, root) for t in parents]
+            found.append((path, target, layout, tuple(w for w in wraps if w and w != target)))
         if _ROUTER_HINT.search(src):
             for path, own, layout in object_routes(src):
                 target = _target(own, (_OBJ_COMP,), imports, file, known, root)
                 if target is None and re.search(r"\bredirect\s*:", own):
                     continue  # { path: '/old', redirect: '/' } 는 화면이 아니다
-                found.append((path, target, layout))
-        for path, target, layout in found:
+                found.append((path, target, layout, ()))
+        for path, target, layout, wraps in found:
             # 같은 경로면 실제 화면(index·leaf)이 자식을 감싸는 레이아웃보다 우선
             if path == "/*" or (path in routes and (layout or path not in layouts)):
                 continue
             dynamic = ":" in path or "*" in path
-            routes[path] = Route(path, dynamic, target or file, resolved=target is not None)
+            routes[path] = Route(
+                path, dynamic, target or file, resolved=target is not None, layouts=wraps
+            )
             if layout:
                 layouts.add(path)
             else:
