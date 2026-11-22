@@ -49,12 +49,18 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
         {"repo": "https://github.com/o/broken", "url": "https://a.dev"},
         {"repo": "https://github.com/o/good", "url": "https://b.dev"},
         {"repo": "https://github.com/o/stale", "url": "https://c.dev"},
+        {"repo": "https://github.com/o/oldver", "url": "https://d.dev"},
     ]
     (tmp_path / "samples.json").write_text(json.dumps(samples))
     monkeypatch.setattr(paths, "CACHE", tmp_path / "cache")
     (tmp_path / "cache").mkdir()
-    (tmp_path / "cache" / "scenario__o__good__new__k.json").write_text("{}")
+    from app.scenario import scenario_cache_path
+
+    good = RepoSnapshot(owner="o", repo="good", sha="new")
+    scenario_cache_path(good, "https://b.dev", None, tmp_path / "cache").write_text("{}")
     (tmp_path / "cache" / "scenario__o__stale__old__k.json").write_text("{}")  # 이전 커밋 것
+    # 같은 커밋이지만 이전 버전·다른 프롬프트 키 — 지금 시연에는 안 쓰인다
+    (tmp_path / "cache" / "scenario__o__oldver__new__deadbeef.json").write_text("{}")
     monkeypatch.setattr(
         github,
         "fetch_repo",
@@ -77,6 +83,7 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
     assert "✗ https://github.com/o/broken" in lines[0] and "찾을 수 없" in lines[0]
     assert "✓ https://github.com/o/good" in lines[1] and "LLM" in lines[1]
     assert "✓ https://github.com/o/stale" in lines[2] and "규칙 기본값" in lines[2]
+    assert "✓ https://github.com/o/oldver" in lines[3] and "규칙 기본값" in lines[3]
 
 
 def test_cli_analyze_passes_prompt(monkeypatch, tmp_path):  # make e2e PROMPT=…

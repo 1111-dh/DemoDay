@@ -327,3 +327,8 @@ def test_capture_warning_includes_detail_line(client, monkeypatch):
     client.post(f"/api/runs/{rid}/build", json={})
     warning = client.get(f"/api/runs/{rid}").json()["warning"]
     assert warning.startswith("캡처 실패: page.screenshot: Timeout 5000ms exceeded.")
+
+
+def test_create_run_empty_login_is_422(client):
+    assert _post(client, login={"username": "", "password": "p"}).status_code == 422
+    assert _post(client, login={"username": "u", "password": ""}).status_code == 422
