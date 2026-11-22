@@ -11,9 +11,14 @@ FIXTURES = Path(__file__).resolve().parents[2] / "contracts" / "fixtures"
 MODELS = {"scenario": Scenario, "capture": Capture, "scene": SceneDoc}
 
 
-@pytest.mark.parametrize("kind", MODELS)
-def test_fixture_matches_schema_and_model(kind):
-    data = json.loads((FIXTURES / f"{kind}.json").read_text())
+def _kind(path: Path) -> str:
+    return next(k for k in MODELS if path.name.startswith(k))
+
+
+@pytest.mark.parametrize("path", sorted(FIXTURES.glob("*.json")), ids=lambda p: p.name)
+def test_fixture_matches_schema_and_model(path):  # scenario.auth.json · *.video.json 포함
+    kind = _kind(path)
+    data = json.loads(path.read_text())
     assert schema_errors(kind, data) == []
     MODELS[kind].model_validate(data)
 
