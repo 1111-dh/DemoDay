@@ -248,7 +248,7 @@ def test_create_run_with_login(client):
     )
     assert res.status_code == 200, res.text
     steps = res.json()["scenario"]["auth"]["steps"]
-    assert [s["action"] for s in steps] == ["goto", "type", "type", "click"]
+    assert [s["action"] for s in steps] == ["goto", "type", "type", "click", "wait", "wait"]
     assert steps[2]["value"] == "***"
     stored = json.loads((runs.run_dir(res.json()["id"]) / "scenario.json").read_text())
     assert stored["auth"]["steps"][2]["value"] == "pw-123"
