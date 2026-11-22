@@ -30,6 +30,7 @@ class Route:
     dynamic: bool
     file: str
     resolved: bool = True  # False = 컴포넌트를 못 찾아 file 이 라우터 파일 자체
+    layouts: tuple[str, ...] = ()  # 이 화면을 감싸는 레이아웃 Route 의 컴포넌트 파일(사이드바 등)
 
 
 def _deps(package: dict) -> dict:

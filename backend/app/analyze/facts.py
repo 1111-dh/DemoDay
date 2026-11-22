@@ -24,6 +24,9 @@ _NOT_UI = re.compile(
 )
 
 
+_NAV_SPEC = re.compile(r"tab|nav|menu|sidebar", re.IGNORECASE)
+
+
 @dataclass
 class PageFacts:
     path: str
@@ -201,8 +204,10 @@ def page_elements(
     seen = {route.file}
     out: list[Element] = []
     selectors: set[str] = set()
-    while queue and len(out) < MAX_ELEMENTS and len(seen) <= FOLLOW_FILES:
+    read = 0  # 예산은 실제로 읽은 파일 수로 센다
+    while queue and len(out) < MAX_ELEMENTS and read <= FOLLOW_FILES:
         file, depth, wanted = queue.pop(0)
+        read += 1
         src = snap.read(file) or ""
         for el in extract_elements(src):
             if el.selector not in selectors:
@@ -211,10 +216,17 @@ def page_elements(
         if not route.resolved or depth >= FOLLOW_DEPTH:
             continue
         for spec, names in _next_specs(src, wanted):
+            if names is not None and names and not any(n[:1].isupper() for n in names):
+                continue  # useX 훅·소문자 함수만 가져오면 화면을 그리지 않는다 (예산 아끼기)
             target = resolve(spec, file, known, root.dir)
-            if target and target not in seen | others and not _NOT_UI.search(spec):
+            ui = not _NOT_UI.search(spec) or _NAV_SPEC.search(
+                spec
+            )  # model/shellTabs 같은 메뉴 설정
+            if target and target not in seen | others and ui:
                 seen.add(target)
-                queue.append((target, depth + 1, names))
+                item = (target, depth + 1, names)
+                # 탭·메뉴 설정은 화면 이동의 핵심이라 먼저 읽는다
+                queue.insert(0, item) if _NAV_SPEC.search(spec) else queue.append(item)
         for target in _auto_components(src, registry):
             if target not in seen | others:
                 seen.add(target)
@@ -233,7 +245,15 @@ def _elements(
         from app.analyze.flutter import flutter_page_elements
 
         return flutter_page_elements(snap, route, root, pages - {route.file})
-    return page_elements(snap, route, root, pages - {route.file})
+    out = page_elements(snap, route, root, pages - {route.file})
+    seen = {e.selector for e in out}
+    for layout in route.layouts:  # 감싸는 레이아웃(사이드바 메뉴 등)의 요소는 화면 요소 뒤에
+        shell = Route(route.path, False, layout)
+        for el in page_elements(snap, shell, root, pages - {layout}):
+            if el.selector not in seen and len(out) < MAX_ELEMENTS:
+                seen.add(el.selector)
+                out.append(el)
+    return out
 
 
 def build_facts(snap: RepoSnapshot) -> RepoFacts:

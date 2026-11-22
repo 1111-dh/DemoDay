@@ -96,3 +96,19 @@ def test_external_links_are_skipped():  # 데모에서 다른 사이트로 나�
         '<a href="mailto:a@b.c">메일</a>'
     )
     assert [e.text for e in extract_elements(src)] == ["검색", "영화"]
+
+
+def test_nav_config_objects_become_links():  # managers-manager shellTabs.ts
+    src = """
+    export const TABS = [
+      { key: 'dashboard', label: '대시보드', icon: 'home', to: paths.dashboard },
+      { to: paths.meetings, label: "회의록" },
+      { label: '설정', value: 3 },
+      { title: '도움말', href: '/help' },
+    ]
+    """
+    assert [(e.kind, e.text, e.selector) for e in extract_elements(src)] == [
+        ("link", "대시보드", "text=대시보드"),
+        ("link", "회의록", "text=회의록"),
+        ("link", "도움말", "text=도움말"),
+    ]

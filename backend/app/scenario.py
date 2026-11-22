@@ -23,7 +23,7 @@ from app.llm import LLM, generate
 
 MAX_STEPS = 7
 MAX_PROMPT = 500
-SCENARIO_VERSION = 5  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 6  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -57,6 +57,7 @@ _STATEFUL = re.compile(r"(?:^|/)(?:results?|loading|success|complete|callback)(?
 _DANGER = re.compile(
     r"로그아웃|log ?out|sign ?out|탈퇴|삭제|delete|remove|결제|구매|purchase|checkout|pay\b"
     r"|초기화|reset|송금|환불|refund|unsubscribe|구독 ?취소"
+    r"|반려|거절|reject|decline"  # 데모 계정의 실제 데이터를 되돌릴 수 없게 바꾼다
     r"|다시 ?시도|재시도|retry|try again",  # 에러 상태에만 보이는 버튼 — 데모 흐름이 아니다
     re.IGNORECASE,
 )

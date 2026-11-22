@@ -288,6 +288,8 @@ def _danger_facts():
         Element("button", "추천받기", 'role=button[name="추천받기"]'),
         Element("button", "다시 시도", 'role=button[name="다시 시도"]'),
         Element("button", "Retry", "text=Retry"),
+        Element("button", "반려", "text=반려"),
+        Element("button", "Reject", "text=Reject"),
     ]
     return facts(pages=[PageFacts("/", False, "app/page.tsx", els)])
 
@@ -304,6 +306,8 @@ def test_dangerous_buttons_hidden_from_llm():  # 로그아웃·삭제·탈퇴·�
         "결제하기",
         "다시 시도",
         "Retry",
+        "text=반려",
+        "Reject",
     ]:
         assert word not in shown, word
     assert "추천받기" in shown

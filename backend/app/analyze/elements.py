@@ -83,8 +83,25 @@ def _input(attrs: str) -> Element | None:
     return None
 
 
+# 메뉴·탭 설정 배열의 항목: { label: '회의록', to: paths.meetings } → 화면에 보이는 링크
+_OBJ = re.compile(r"\{[^{}]*\}")
+_NAV_LABEL = re.compile(r"""\b(?:label|title)\s*:\s*(["'])([^"'\n]{1,30})\1""")
+_NAV_TARGET = re.compile(r"\b(?:to|href|path)\s*:")
+
+
+def _nav_items(source: str) -> list[tuple[int, Element]]:
+    found = []
+    for m in _OBJ.finditer(source):
+        body = m.group(0)
+        if (label := _NAV_LABEL.search(body)) and _NAV_TARGET.search(body):
+            text = label.group(2).strip()
+            if text and "{" not in text:
+                found.append((m.start(), Element("link", text, f"text={text}")))
+    return found
+
+
 def extract_elements(source: str, limit: int = 15) -> list[Element]:
-    found: list[tuple[int, Element]] = []
+    found: list[tuple[int, Element]] = _nav_items(source)
     for m in _OPEN.finditer(source):
         tag = m.group(1)
         end, self_closing = tag_end(source, m.end())
