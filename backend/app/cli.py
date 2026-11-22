@@ -49,6 +49,7 @@ def warm(file: str) -> int:
     import time
 
     from app import github
+    from app.analyze.facts import RepoFacts
     from app.llm import get_llm
     from app.scenario import analyze as run_analyze
     from app.scenario import scenario_cache_path
@@ -66,12 +67,13 @@ def warm(file: str) -> int:
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 scenario = run_analyze(s["repo"], s["url"], Path(tmp), get_llm(), fetch=fetch)
+                facts = RepoFacts.from_json((Path(tmp) / "facts.json").read_text())
         except Exception as e:  # 시연 준비 — 하나가 깨져도 나머지는 데운다
             failed += 1
             print(f"✗ {s['repo']} — {e}")
             continue
         snap = snaps[-1]  # 지금 커밋의 시나리오 캐시가 있어야 시연 때 LLM 없이 즉시 나온다
-        llm_made = scenario_cache_path(snap, s["url"], None, paths.CACHE).exists()
+        llm_made = scenario_cache_path(snap, s["url"], None, facts, paths.CACHE).exists()
         kind = "LLM 시나리오 캐시됨" if llm_made else "규칙 기본값 (LLM 키 확인)"
         took = time.monotonic() - start
         print(f"✓ {s['repo']} — {len(scenario['steps'])}단계, {kind}, {took:.1f}s")
