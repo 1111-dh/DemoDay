@@ -28,6 +28,15 @@ class Point(BaseModel):
     y: float
 
 
+class VideoClip(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    src: Annotated[str, Field(description='run 디렉터리 기준. 예: capture.webm')]
+    startMs: Annotated[int, Field(ge=0)]
+    endMs: Annotated[int, Field(ge=0)]
+
+
 class Zoom(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -46,6 +55,12 @@ class TitleScene(BaseModel):
     transition: Transition | None = 'fade'
     text: str
     subtitle: str | None = None
+    kicker: Annotated[
+        str | None,
+        Field(
+            description='제목 위 작은 라벨 (예: "01", "문제"). 있으면 장 구분 카드로 그린다'
+        ),
+    ] = None
 
 
 class ScreenScene(BaseModel):
@@ -61,6 +76,10 @@ class ScreenScene(BaseModel):
     zoom: Zoom | None = None
     cursor: Point | None = None
     caption: str | None = None
+    highlight: Annotated[
+        list[str] | None, Field(description='caption 안에서 강조할 단어')
+    ] = None
+    video: VideoClip | None = None
 
 
 class EdgeItem(RootModel[int]):
