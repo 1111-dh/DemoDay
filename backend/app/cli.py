@@ -11,13 +11,20 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
+from dotenv import load_dotenv
+
+from app import paths
 from app.github import RepoError
 
 
 def analyze(repo: str, url: str, out: str) -> None:
-    # TODO(A): GitHub API로 라우트·README 수집 → LLM → scenario.json
-    raise NotImplementedError("analyze 단계 미구현 (A)")
+    from app.llm import get_llm
+    from app.scenario import analyze as run_analyze
+
+    scenario = run_analyze(repo, url, Path(out).parent, get_llm())
+    print(f"✓ scenario {len(scenario['steps'])}단계 → {out}")
 
 
 def scene(run: str, total_sec: float) -> None:
@@ -34,6 +41,7 @@ def facts(repo: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv(paths.ROOT / ".env")
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("analyze")
