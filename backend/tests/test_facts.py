@@ -1,5 +1,6 @@
+from app.analyze.code_routes import react_routes
 from app.analyze.facts import RepoFacts, build_facts
-from app.analyze.routes import find_app_root, react_routes
+from app.analyze.routes import find_app_root
 from tests.conftest import make_snap, pkg
 
 ROUTER_JSX = """
@@ -68,7 +69,7 @@ def test_build_facts_demo_like_repo(demo_like_snap):
 
 
 def test_build_facts_no_app():
-    snap = make_snap({"package.json": pkg({"vue": "3"})})
+    snap = make_snap({"package.json": pkg({"@angular/core": "18"})})
     facts = build_facts(snap)
     assert (facts.app_dir, facts.framework, facts.pages) == (None, None, [])
     assert facts.name == "r"

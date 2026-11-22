@@ -80,7 +80,7 @@ def test_next_preferred_over_react():
 
 
 def test_no_app_returns_none():
-    snap = make_snap({"package.json": pkg({"vue": "3"})})
+    snap = make_snap({"package.json": pkg({"@angular/core": "18"})})
     assert find_app_root(snap) is None
 
 

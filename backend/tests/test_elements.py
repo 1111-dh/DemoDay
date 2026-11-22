@@ -56,3 +56,9 @@ def test_arrow_function_handlers_keep_elements():  # 리뷰 #1
 def test_data_attribute_is_not_name():  # 리뷰 #9
     src = '<input data-name="field" placeholder="검색어" />'
     assert [e.selector for e in extract_elements(src)] == ['input[placeholder="검색어"]']
+
+
+def test_html_entities_decoded():
+    assert [e.selector for e in extract_elements("<button>&nbsp;Edit&amp;Save</button>")] == [
+        "text=Edit&Save"
+    ]

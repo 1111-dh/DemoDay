@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -14,9 +15,16 @@ from app.analyze.jsx import tag_end
 Kind = Literal["button", "link", "input"]
 MAX_TEXT = 30
 
-_OPEN = re.compile(r"<(button|Link|a|input)\b")
+_OPEN = re.compile(r"<(button|Link|a|input|router-link|RouterLink|NuxtLink)\b")
 _TAG = re.compile(r"<[^>]+>")
-_KIND: dict[str, Kind] = {"button": "button", "Link": "link", "a": "link"}
+_KIND: dict[str, Kind] = {
+    "button": "button",
+    "Link": "link",
+    "a": "link",
+    "router-link": "link",
+    "RouterLink": "link",
+    "NuxtLink": "link",
+}
 
 
 @dataclass
@@ -27,14 +35,14 @@ class Element:
 
 
 def _attr(attrs: str, name: str) -> str | None:
-    m = re.search(rf'(?<![\w-]){name}\s*=\s*"([^"]*)"', attrs) or re.search(
-        rf"(?<![\w-]){name}\s*=\s*'([^']*)'", attrs
+    m = re.search(rf'(?<![\w:@-]){name}\s*=\s*"([^"]*)"', attrs) or re.search(
+        rf"(?<![\w:@-]){name}\s*=\s*'([^']*)'", attrs
     )
     return m.group(1).strip() if m else None
 
 
 def _clean(inner: str) -> str | None:
-    text = " ".join(_TAG.sub(" ", inner).split())
+    text = " ".join(html.unescape(_TAG.sub(" ", inner)).split())
     if not text or "{" in text or "}" in text or len(text) > MAX_TEXT:
         return None
     return text

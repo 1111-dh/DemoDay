@@ -48,8 +48,12 @@ def _frontend(facts: RepoFacts) -> str:
     stack = facts.stack
     if "next" in stack:
         return "Next.js"
+    if "nuxt" in stack:
+        return "Nuxt"
     if "react" in stack:
         return "React + Vite" if "vite" in stack else "React"
+    if "vue" in stack:
+        return "Vue"
     return "Web App"
 
 
