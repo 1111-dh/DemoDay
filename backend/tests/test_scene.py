@@ -235,3 +235,20 @@ def test_check_highlights_count(tmp_path):
     llm = FakeLLM(bad, bad, bad)
     build_scene(run_dir(tmp_path), 60, False, llm)
     assert len(llm.users) == 3
+
+
+@pytest.mark.parametrize(
+    "clip", [{"startMs": 5000, "endMs": 3000}, {"startMs": 3000, "endMs": 3000}]
+)
+def test_bad_clip_falls_back_to_image(scenario, clip):  # Task 6~7 리뷰 #1
+    screen = assemble(scenario, _clip_shots(clip), FACTS, 60, False, None, video="capture.webm")[
+        "scenes"
+    ][1]
+    assert "video" not in screen and screen["durationSec"] == 4
+
+
+def test_build_scene_tolerates_null_login(tmp_path):  # Task 6~7 리뷰 #7 — 실패해도 영상은 나와야
+    run = run_dir(tmp_path)
+    cap = json.loads((run / "capture.json").read_text())
+    (run / "capture.json").write_text(json.dumps({**cap, "login": None}))
+    assert build_scene(run, 60, False, None)["scenes"][1]["type"] == "screen"

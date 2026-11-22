@@ -97,7 +97,7 @@ def assemble(
         screen: dict = {"type": "screen", "image": shot["image"]}
         if shot.get("status", "ok") == "fallback":
             screen["durationSec"] = FALLBACK_SEC
-        elif video and (clip := shot.get("clip")):
+        elif video and (clip := shot.get("clip")) and clip["endMs"] > clip["startMs"]:
             # 움직임은 실제 길이대로 — weight 대신 구간 길이 (렌더가 재생 속도로 맞춘다)
             sec = (clip["endMs"] - clip["startMs"]) / 1000
             screen["durationSec"] = min(MAX_CLIP_SEC, max(FALLBACK_SEC, sec))
@@ -150,10 +150,8 @@ def build_scene(
     prompt_file = run_dir / "prompt.txt"
     prompt = prompt_file.read_text() if prompt_file.exists() else None
     shots = keep_shots(capture["shots"])
-    media = {
-        "video": capture.get("video"),
-        "login_images": capture.get("login", {}).get("images"),
-    }  # LLM 호출 전에 — 자막·가중치 개수 = 남은 shot 수
+    login = capture.get("login") or {}
+    media = {"video": capture.get("video"), "login_images": login.get("images")}
     n = len(shots)
 
     def check(c: SceneCopy) -> list[str]:
