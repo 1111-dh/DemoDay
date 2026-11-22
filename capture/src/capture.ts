@@ -14,7 +14,7 @@
  * - 녹화는 viewport와 같은 1280x720. (Playwright는 CSS 픽셀로 녹화해서 deviceScaleFactor·큰 size로는 선명해지지 않고 여백만 생긴다)
  * - 녹화가 실패하면 video·clip 없이 지금처럼 정지 화면만 낸다(영상은 반드시 나와야 한다).
  * - clip 기준점(0)은 녹화 페이지를 연 직후. 녹화 시작 시각 API가 없어 ±0.2초 오차가 있다.
- *   click 단계는 clip.startMs + CLICK_AT_MS에 클릭한다 — 렌더의 커서 애니메이션과 같은 박자.
+ *   click·type 단계는 clip.startMs + CLICK_AT_MS에 클릭한다 — 렌더의 커서 애니메이션과 같은 박자.
  */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -120,11 +120,18 @@ async function run(c: Ctx, step: Step): Promise<Result> {
         await loc!.fill(step.value!);
         return { click };
       }
+      // click과 같은 박자: clip 시작 0.8초에 입력칸을 누르고 한 글자씩 입력
+      const clipStart = Date.now();
+      if (click) {
+        await sleep(CURSOR_FROM_MS);
+        await glide(page, c.mouse, click, CLICK_AT_MS - CURSOR_FROM_MS - 80);
+        await sleep(Math.max(0, clipStart + CLICK_AT_MS - Date.now()));
+        c.mouse = click;
+      }
       await loc!.click();
       await loc!.fill("");
       await loc!.pressSequentially(step.value!, { delay: TYPE_DELAY_MS });
-      if (click) c.mouse = click;
-      return { click };
+      return { click, clipStart };
     }
     case "scroll":
       if (loc) await loc.scrollIntoViewIfNeeded();

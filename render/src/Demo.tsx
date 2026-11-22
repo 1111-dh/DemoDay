@@ -7,12 +7,12 @@ import { ArchitectureScene } from "./scenes/ArchitectureScene";
 import { theme } from "./theme";
 
 /** 장면 type → 컴포넌트. 새 장면 type은 스키마 → make gen → 여기 case 추가 순서로. */
-function renderScene(scene: Scene, domain?: string) {
+function renderScene(scene: Scene, frames: number, domain?: string) {
   switch (scene.type) {
     case "title":
       return <TitleScene scene={scene} />;
     case "screen":
-      return <ScreenScene scene={scene} domain={domain} />;
+      return <ScreenScene scene={scene} domain={domain} durationInFrames={frames} />;
     case "architecture":
       return <ArchitectureScene scene={scene} />;
     default: {
@@ -62,7 +62,7 @@ export const Demo: React.FC<DemoProps> = (doc) => {
       <Series>
         {doc.scenes.map((scene, i) => (
           <Series.Sequence key={i} durationInFrames={frames[i]}>
-            <Enter kind={scene.transition}>{renderScene(scene, doc.domain)}</Enter>
+            <Enter kind={scene.transition}>{renderScene(scene, frames[i], doc.domain)}</Enter>
           </Series.Sequence>
         ))}
       </Series>

@@ -1,4 +1,4 @@
-import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Freeze, getStaticFiles, Img, interpolate, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { ScreenScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
 
@@ -8,15 +8,36 @@ const H = 720;
 const S = 0.86;
 const BAR = 36;
 
-type Props = { scene: T; domain?: string };
+/** 녹화 구간을 장면 길이에 맞추는 재생 속도 범위. 벗어나면 마지막 프레임에서 멈춘다. */
+const RATE_MIN = 0.5;
+const RATE_MAX = 2;
+
+type Props = { scene: T; domain?: string; durationInFrames: number };
+type Media = { src: string; trimBefore: number; rate: number; playFrames: number };
+
+/** 재생할 녹화 구간. 파일이 없거나 구간이 잘못됐으면 null → 정지 화면(image). */
+function media(scene: T, sceneFrames: number, fps: number): Media | null {
+  const v = scene.video;
+  if (!v || v.endMs <= v.startMs) return null;
+  if (!getStaticFiles().some((f) => f.name === `run/${v.src}`)) return null;
+  const clipFrames = ((v.endMs - v.startMs) / 1000) * fps;
+  const rate = Math.min(RATE_MAX, Math.max(RATE_MIN, clipFrames / sceneFrames));
+  return {
+    src: staticFile(`run/${v.src}`),
+    trimBefore: Math.round((v.startMs / 1000) * fps),
+    rate,
+    playFrames: Math.max(1, Math.floor(clipFrames / rate)),
+  };
+}
 
 /**
  * 밝은 배경 위 브라우저 카드 + 커서 이동 → 클릭 하이라이트 → 줌 인 + 좌하단 자막.
  * 좌표는 캡처 viewport(1280x720) 기준 px.
  */
-export const ScreenScene: React.FC<Props> = ({ scene, domain }) => {
+export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const m = media(scene, durationInFrames, fps);
   const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 0.6 * fps });
 
   return (
@@ -38,7 +59,7 @@ export const ScreenScene: React.FC<Props> = ({ scene, domain }) => {
         <AddressBar domain={domain} />
         <div style={{ width: W * S, height: H * S, overflow: "hidden", position: "relative" }}>
           <div style={{ width: W, height: H, transform: `scale(${S})`, transformOrigin: "0 0" }}>
-            <Screen scene={scene} />
+            <Screen scene={scene} media={m} />
           </div>
         </div>
       </div>
@@ -47,11 +68,14 @@ export const ScreenScene: React.FC<Props> = ({ scene, domain }) => {
   );
 };
 
-/** 캡처 좌표계(1280x720) 안: 화면 + 커서 + 클릭 하이라이트 + 줌. */
-const Screen: React.FC<{ scene: T }> = ({ scene }) => {
+/**
+ * 캡처 좌표계(1280x720) 안: 화면(녹화 구간 또는 정지 화면) + 커서 + 클릭 하이라이트 + 줌.
+ * 녹화를 빠르게/느리게 재생하면 클릭 시각도 같이 움직이므로 커서 박자를 재생 속도로 나눈다.
+ */
+const Screen: React.FC<{ scene: T; media: Media | null }> = ({ scene, media: m }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const s = (sec: number) => sec * fps;
+  const s = (sec: number) => (sec * fps) / (m?.rate ?? 1);
 
   // 타임라인: 0~0.8초 커서 이동, 0.8초 클릭, 1초부터 줌
   const cursor = scene.cursor;
@@ -69,7 +93,14 @@ const Screen: React.FC<{ scene: T }> = ({ scene }) => {
   return (
     // 줌 기준점을 원점으로 잡으면 scale ≥ 1에서도 화면이 비지 않는다
     <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: zoom ? `${zoom.x}px ${zoom.y}px` : "center" }}>
-      <Img src={staticFile(`run/${scene.image}`)} style={{ width: W, height: H }} />
+      {m ? (
+        // 구간이 장면보다 짧으면(속도 하한) 마지막 프레임에서 멈춘다
+        <Freeze frame={m.playFrames - 1} active={frame >= m.playFrames}>
+          <OffthreadVideo src={m.src} trimBefore={m.trimBefore} playbackRate={m.rate} muted style={{ width: W, height: H }} />
+        </Freeze>
+      ) : (
+        <Img src={staticFile(`run/${scene.image}`)} style={{ width: W, height: H }} />
+      )}
       {cursor && (
         <>
           <div
