@@ -1,10 +1,130 @@
-"""FastAPI 진입점 (A 담당). 실행: make dev-api"""
+"""FastAPI 진입점 (A 담당). 실행: make dev-api  — 엔드포인트 표는 backend/AGENTS.md."""
 
-from fastapi import FastAPI
+from __future__ import annotations
+
+import json
+import logging
+
+from dotenv import load_dotenv
+from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+
+from app import llm, paths, pipeline, runs, scenario
+from app.contracts import schema_errors
+from app.github import RepoError
+
+load_dotenv(paths.ROOT / ".env")
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="DemoDay API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class CreateRun(BaseModel):
+    repo: str
+    url: str
+    totalSec: float = Field(default=60, gt=0)
+
+
+class BuildRun(BaseModel):
+    includeArchitecture: bool = True
+    totalSec: float | None = Field(default=None, gt=0)
+
+
+def _dir(rid: str):
+    try:
+        return runs.run_dir(rid)
+    except KeyError:
+        raise HTTPException(404, "run을 찾을 수 없습니다") from None
+
+
+def _not_busy(rid: str) -> None:
+    if runs.is_busy(rid):
+        raise HTTPException(409, "이미 작업 중입니다 — 끝난 뒤 다시 시도하세요")
+
+
+def _validated(kind: str, data: dict) -> dict:
+    if errors := schema_errors(kind, data):
+        raise HTTPException(422, errors)
+    return data
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/runs")
+def create_run(body: CreateRun) -> dict:
+    rid = runs.new_run()
+    try:
+        sc = scenario.analyze(body.repo, body.url, runs.run_dir(rid), llm.get_llm())
+    except RepoError as e:
+        runs.write_status(rid, stage="error", error=str(e))
+        raise HTTPException(400, str(e)) from None
+    except Exception as e:  # 예상 못 한 분석 실패도 웹이 메시지를 보여줄 수 있게
+        log.exception("analyze 실패 %s", rid)
+        runs.write_status(rid, stage="error", error=f"분석 실패: {e}")
+        raise HTTPException(500, f"분석 실패: {e}") from None
+    runs.write_status(rid, stage="analyzed", repo=body.repo, url=body.url, totalSec=body.totalSec)
+    return {"id": rid, "scenario": sc}
+
+
+@app.put("/api/runs/{rid}/scenario")
+def put_scenario(rid: str, body: dict) -> dict:
+    d = _dir(rid)
+    _not_busy(rid)
+    runs.write_json(d / "scenario.json", _validated("scenario", body))
+    return {"ok": True}
+
+
+@app.post("/api/runs/{rid}/build")
+def build_run(rid: str, body: BuildRun, tasks: BackgroundTasks) -> dict:
+    _dir(rid)
+    _not_busy(rid)
+    status = runs.read_status(rid)
+    total = body.totalSec or status.get("totalSec", 60)
+    runs.write_status(rid, stage="queued", totalSec=total)
+    tasks.add_task(pipeline.build, rid, total, body.includeArchitecture)
+    return {"id": rid, "stage": "queued"}
+
+
+@app.get("/api/runs/{rid}")
+def get_run(rid: str) -> dict:
+    d = _dir(rid)
+    out = {"id": rid, **runs.read_status(rid)}
+    for name in ("scenario", "scene"):
+        if (f := d / f"{name}.json").exists():
+            try:
+                out[name] = json.loads(f.read_text())
+            except json.JSONDecodeError:  # 백그라운드 단계가 쓰는 중 — 다음 폴링에서 읽힌다
+                pass
+    if (d / "preview.mp4").exists():
+        out["videoUrl"] = f"/api/runs/{rid}/files/preview.mp4"
+    return out
+
+
+@app.put("/api/runs/{rid}/scene")
+def put_scene(rid: str, body: dict, tasks: BackgroundTasks) -> dict:
+    d = _dir(rid)
+    _not_busy(rid)
+    runs.write_json(d / "scene.json", _validated("scene", body))
+    runs.write_status(rid, stage="queued")
+    tasks.add_task(pipeline.rerender, rid)
+    return {"id": rid, "stage": "queued"}
+
+
+@app.get("/api/runs/{rid}/files/{path:path}")
+def get_file(rid: str, path: str) -> FileResponse:
+    d = _dir(rid).resolve()
+    f = (d / path).resolve()
+    if not f.is_relative_to(d) or not f.is_file():
+        raise HTTPException(404, "파일 없음")
+    return FileResponse(f)

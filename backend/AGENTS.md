@@ -7,8 +7,23 @@
 - 캡처·렌더는 subprocess로 호출한다: `pnpm --filter @demoday/capture capture <scenario> <runDir>`, `pnpm --filter @demoday/render render <runDir> <out.mp4>`.
 
 ## LLM 출력 규칙
-- LLM은 **scenario.json / scene.json만** 만든다. 최신 Claude 모델과 structured output(JSON schema)을 쓴다.
+- LLM은 **scenario.json / scene.json만** 만든다. structured output(JSON schema)을 쓴다.
+- 공급자는 `.env`의 `LLM_PROVIDER`: `groq`(무료 플랜, `GROQ_API_KEY`, 기본 모델 `openai/gpt-oss-120b`, `GROQ_MODEL`로 변경) 또는 `anthropic`(`ANTHROPIC_API_KEY`). 키가 없으면 규칙 기반 기본값만 쓴다. 구현은 `app/llm.py`의 `get_llm()`.
 - 결과는 반드시 `schema_errors(kind, data)`로 검증한다. pydantic 모델은 if/then 조건(goto→path 등)을 확인하지 못한다.
 - 위반이 있으면 에러 목록을 프롬프트에 붙여 재시도(최대 2회)하고, 그래도 실패하면 규칙 기반 기본값을 쓴다.
 - 샘플 레포 분석 결과는 `runs/cache/`에 캐싱한다. 라이브 시연 중 LLM 지연을 막기 위해서다.
 - 프롬프트는 `app/prompts/`에 파일로 둔다(코드에 긴 문자열 금지).
+
+## API (C의 web이 호출) — `make dev-api` → http://localhost:8000, CORS `localhost:3000`
+
+| 메서드 | 경로 | 요청 | 응답 |
+|---|---|---|---|
+| POST | `/api/runs` | `{repo, url, totalSec?=60}` | `{id, scenario}` — 분석은 동기(캐시면 즉시). 잘못된 레포 → 400 `{detail: "메시지"}` |
+| PUT | `/api/runs/{id}/scenario` | Scenario JSON | `{ok: true}`. 스키마 위반 → 422 `{detail: [에러…]}` |
+| POST | `/api/runs/{id}/build` | `{includeArchitecture?=true, totalSec?}` | `{id, stage: "queued"}` — 백그라운드로 capture → scene → render |
+| GET | `/api/runs/{id}` | — | `{id, stage, error?, updatedAt, repo, url, totalSec, scenario?, scene?, videoUrl?}` |
+| PUT | `/api/runs/{id}/scene` | SceneDoc JSON | `{id, stage: "queued"}` — 저장 후 백그라운드 재렌더. 위반 → 422 |
+| GET | `/api/runs/{id}/files/{path}` | — | run 디렉터리 파일(`shots/2.png`, `preview.mp4`). 밖 경로·없는 파일 → 404 |
+
+- `stage`: `created` → `analyzed` → (`queued` → `capturing` → `scening` → `rendering` → `done`) / 실패 시 `error` + `error` 메시지. 웹은 `done`·`error`가 될 때까지 `GET /api/runs/{id}`를 폴링한다(1~2초).
+- scene 안의 이미지 경로(`shots/2.png`)는 `/api/runs/{id}/files/` 뒤에 붙여 쓴다. 없는 run id → 404.

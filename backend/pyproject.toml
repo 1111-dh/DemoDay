@@ -27,6 +27,9 @@ extend-exclude = ["app/contracts/scenario.py", "app/contracts/capture.py", "app/
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
