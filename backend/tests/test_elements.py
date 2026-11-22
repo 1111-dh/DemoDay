@@ -36,3 +36,23 @@ def test_extract_elements_limit_and_dedupe():
 
 def test_skips_too_long_text():
     assert extract_elements(f"<button>{'가' * 31}</button>") == []
+
+
+def test_arrow_function_handlers_keep_elements():  # 리뷰 #1
+    src = """
+    <button onClick={() => setOpen(true)}>열기</button>
+    <button onClick={() => go()} aria-label="닫기">X</button>
+    <input onChange={(e) => setQ(e.target.value)} name="q" />
+    <Link href="/about" onClick={() => track()}>소개</Link>
+    """
+    assert [e.selector for e in extract_elements(src)] == [
+        "text=열기",
+        '[aria-label="닫기"]',
+        "input[name=q]",
+        "text=소개",
+    ]
+
+
+def test_data_attribute_is_not_name():  # 리뷰 #9
+    src = '<input data-name="field" placeholder="검색어" />'
+    assert [e.selector for e in extract_elements(src)] == ['input[placeholder="검색어"]']

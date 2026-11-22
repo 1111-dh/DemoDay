@@ -82,3 +82,16 @@ def test_next_preferred_over_react():
 def test_no_app_returns_none():
     snap = make_snap({"package.json": pkg({"vue": "3"})})
     assert find_app_root(snap) is None
+
+
+def test_next_app_only_exact_page_files():  # 리뷰 #2
+    snap = make_snap(
+        {"package.json": pkg({"next": "16"})},
+        extra_paths=[
+            "app/page.tsx",
+            "app/about/page.tsx",
+            "app/components/Subpage.tsx",
+            "app/landingpage.tsx",
+        ],
+    )
+    assert [r.path for r in next_routes(snap, find_app_root(snap))] == ["/", "/about"]

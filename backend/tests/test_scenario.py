@@ -202,3 +202,12 @@ def test_default_skips_auth_legal_and_mock_pages():
     ]
     sc = default_scenario(facts(pages), BASE)
     assert [s["path"] for s in sc["steps"]] == ["/", "/dashboard"]
+
+
+def test_not_demo_matches_whole_segment():  # 리뷰 #8
+    pages = [
+        PageFacts(p, False, "src/routes.tsx", [])
+        for p in ["/policyholders", "/error-tracker", "/registry", "/privacy-policy", "/login"]
+    ]
+    sc = default_scenario(facts(pages), BASE)
+    assert [s["path"] for s in sc["steps"]] == ["/policyholders", "/error-tracker", "/registry"]

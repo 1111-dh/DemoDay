@@ -12,8 +12,15 @@ from app.scene import build_scene
 log = logging.getLogger(__name__)
 
 
-def _run(cmd: list[str], what: str) -> None:
-    res = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True)
+CAPTURE_TIMEOUT = 300  # 단계당 5초 × 최대 7단계 + 브라우저 기동 여유
+RENDER_TIMEOUT = 900
+
+
+def _run(cmd: list[str], what: str, timeout: float) -> None:
+    try:
+        res = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{what} 시간 초과 ({timeout:g}초)") from None
     if res.returncode != 0:
         tail = "\n".join((res.stderr or res.stdout).strip().splitlines()[-20:])
         raise RuntimeError(f"{what} 실패:\n{tail}")
@@ -31,6 +38,7 @@ def run_capture(run_dir: Path) -> None:
             str(run_dir),
         ],
         "캡처",
+        CAPTURE_TIMEOUT,
     )
 
 
@@ -47,6 +55,7 @@ def run_render(run_dir: Path) -> None:
             "--scale=0.5",
         ],
         "렌더",
+        RENDER_TIMEOUT,
     )
 
 

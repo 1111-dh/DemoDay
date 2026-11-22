@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -15,6 +16,7 @@ from app.contracts import schema_errors
 from app.github import RepoError
 
 load_dotenv(paths.ROOT / ".env")
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="DemoDay API")
 app.add_middleware(
@@ -43,6 +45,11 @@ def _dir(rid: str):
         raise HTTPException(404, "run을 찾을 수 없습니다") from None
 
 
+def _not_busy(rid: str) -> None:
+    if runs.is_busy(rid):
+        raise HTTPException(409, "이미 작업 중입니다 — 끝난 뒤 다시 시도하세요")
+
+
 def _validated(kind: str, data: dict) -> dict:
     if errors := schema_errors(kind, data):
         raise HTTPException(422, errors)
@@ -62,6 +69,10 @@ def create_run(body: CreateRun) -> dict:
     except RepoError as e:
         runs.write_status(rid, stage="error", error=str(e))
         raise HTTPException(400, str(e)) from None
+    except Exception as e:  # 예상 못 한 분석 실패도 웹이 메시지를 보여줄 수 있게
+        log.exception("analyze 실패 %s", rid)
+        runs.write_status(rid, stage="error", error=f"분석 실패: {e}")
+        raise HTTPException(500, f"분석 실패: {e}") from None
     runs.write_status(rid, stage="analyzed", repo=body.repo, url=body.url, totalSec=body.totalSec)
     return {"id": rid, "scenario": sc}
 
@@ -69,13 +80,15 @@ def create_run(body: CreateRun) -> dict:
 @app.put("/api/runs/{rid}/scenario")
 def put_scenario(rid: str, body: dict) -> dict:
     d = _dir(rid)
-    (d / "scenario.json").write_text(json.dumps(_validated("scenario", body), ensure_ascii=False))
+    _not_busy(rid)
+    runs.write_json(d / "scenario.json", _validated("scenario", body))
     return {"ok": True}
 
 
 @app.post("/api/runs/{rid}/build")
 def build_run(rid: str, body: BuildRun, tasks: BackgroundTasks) -> dict:
     _dir(rid)
+    _not_busy(rid)
     status = runs.read_status(rid)
     total = body.totalSec or status.get("totalSec", 60)
     runs.write_status(rid, stage="queued", totalSec=total)
@@ -89,7 +102,10 @@ def get_run(rid: str) -> dict:
     out = {"id": rid, **runs.read_status(rid)}
     for name in ("scenario", "scene"):
         if (f := d / f"{name}.json").exists():
-            out[name] = json.loads(f.read_text())
+            try:
+                out[name] = json.loads(f.read_text())
+            except json.JSONDecodeError:  # 백그라운드 단계가 쓰는 중 — 다음 폴링에서 읽힌다
+                pass
     if (d / "preview.mp4").exists():
         out["videoUrl"] = f"/api/runs/{rid}/files/preview.mp4"
     return out
@@ -98,7 +114,8 @@ def get_run(rid: str) -> dict:
 @app.put("/api/runs/{rid}/scene")
 def put_scene(rid: str, body: dict, tasks: BackgroundTasks) -> dict:
     d = _dir(rid)
-    (d / "scene.json").write_text(json.dumps(_validated("scene", body), ensure_ascii=False))
+    _not_busy(rid)
+    runs.write_json(d / "scene.json", _validated("scene", body))
     runs.write_status(rid, stage="queued")
     tasks.add_task(pipeline.rerender, rid)
     return {"id": rid, "stage": "queued"}

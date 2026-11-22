@@ -131,3 +131,51 @@ def test_select_files_prefers_routers_and_pages():
         "frontend/src/app/router/routes.tsx",
         "frontend/src/pages/dashboard/ui/DashboardPage.tsx",
     ]
+
+
+def _repo_transport(tree: list[dict], raw: dict[str, tuple[int, str]], calls: list[str]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.raw_path.decode())
+        host, path = request.url.host, request.url.path
+        if host == "api.github.com":
+            if path == "/repos/o/r":
+                return httpx.Response(200, json={"default_branch": "main"})
+            if path == "/repos/o/r/commits/main":
+                return httpx.Response(200, json={"sha": "abc123"})
+            if path == "/repos/o/r/git/trees/abc123":
+                return httpx.Response(200, json={"tree": tree})
+        if host == "raw.githubusercontent.com":
+            status, text = raw.get(path.removeprefix("/o/r/abc123/"), (200, "x"))
+            return httpx.Response(status, text=text)
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+
+def _blobs(*paths):
+    return [{"path": p, "type": "blob", "size": 10} for p in paths]
+
+
+def test_fetch_skips_failed_file_and_quotes_path(tmp_path):  # 리뷰 #3
+    calls: list[str] = []
+    tree = _blobs("README.md", "src/App.tsx", "src/pages/C#Guide.tsx", "src/pages/Bad.tsx")
+    client = httpx.Client(transport=_repo_transport(tree, {"src/pages/Bad.tsx": (500, "")}, calls))
+    snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+    assert "src/pages/Bad.tsx" not in snap.files
+    assert "src/pages/C#Guide.tsx" in snap.files
+    assert "/o/r/abc123/src/pages/C%23Guide.tsx" in calls
+
+
+def test_fetch_downloads_router_imports(tmp_path):  # 리뷰 #6
+    app = "import Search from './views/Search'\nconst S = lazy(() => import('@/screens/Home'))"
+    tree = _blobs("src/App.tsx", "src/views/Search.tsx", "src/screens/Home/index.tsx")
+    client = httpx.Client(transport=_repo_transport(tree, {"src/App.tsx": (200, app)}, []))
+    snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+    assert {"src/views/Search.tsx", "src/screens/Home/index.tsx"} <= set(snap.files)
+
+
+def test_fetch_ignores_corrupt_cache(tmp_path):  # 리뷰 #7
+    (tmp_path / "o__r__abc123.json").write_text('{"owner": "o", "rep')
+    client = httpx.Client(transport=_repo_transport(_blobs("README.md"), {}, []))
+    snap = fetch_repo("https://github.com/o/r", client=client, cache_dir=tmp_path)
+    assert snap.files == {"README.md": "x"}

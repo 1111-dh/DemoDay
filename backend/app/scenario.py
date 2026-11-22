@@ -40,8 +40,9 @@ class ScenarioDraft(BaseModel):
 
 # 데모에 보여주지 않는 페이지: 로그인·가입·비밀번호(MVP 제외), 약관·탈퇴, _private·__mock, 오류
 _NOT_DEMO = re.compile(
-    r"(?:^|/)(?:_|log-?in|sign-?in|sign-?up|register|log-?out|forgot|reset|password"
-    r"|terms|privacy|policy|withdraw|404|not-found|error)",
+    r"(?:^|/)(?:_[^/]*|(?:log-?in|sign-?in|sign-?up|register|log-?out|forgot(?:-password)?"
+    r"|reset(?:-password)?|password(?:-reset)?|terms(?:-of-service)?|privacy(?:-policy)?|policy"
+    r"|withdraw(?:al)?|404|not-found|error))(?=$|/)",
     re.IGNORECASE,
 )
 

@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.analyze.jsx import tag_end
 from app.github import RepoSnapshot
 
 Framework = Literal["next-app", "next-pages", "react"]
@@ -45,7 +46,7 @@ def _app_router_files(paths: list[str], base: str) -> list[tuple[str, str]]:
         rel = _rel(p, base)
         if rel is None:
             continue
-        m = re.match(r"^(?:src/)?app/(.*)page" + _PAGE_EXT, rel)
+        m = re.match(r"^(?:src/)?app/((?:.*/)?)page" + _PAGE_EXT, rel)
         if m:
             out.append((p, m.group(1)))
     return out
@@ -152,27 +153,6 @@ def _norm_react_path(raw: str) -> str | None:
     return raw if raw.startswith("/") else "/" + raw
 
 
-def _tag_end(src: str, i: int) -> tuple[int, bool]:
-    """`<Route` 바로 뒤 i부터 태그 끝 `>`까지 → (끝 위치, self-closing).
-
-    속성의 `{…}`·따옴표 안 `>`는 무시한다.
-    """
-    depth, quote = 0, ""
-    for j in range(i, len(src)):
-        c = src[j]
-        if quote:
-            quote = "" if c == quote else quote
-        elif c in "\"'`":
-            quote = c
-        elif c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-        elif c == ">" and depth == 0:
-            return j + 1, src[j - 1] == "/"
-    return len(src), True
-
-
 def _join(segments: list[str | None]) -> str:
     parts: list[str] = []
     for seg in segments:
@@ -198,7 +178,7 @@ def _jsx_routes(src: str) -> list[tuple[str, str | None]]:
             if stack:
                 stack.pop()
             continue
-        end, self_closing = _tag_end(src, after)
+        end, self_closing = tag_end(src, after)
         tag = src[after:end]
         p = re.search(r"""\bpath\s*=\s*["']([^"']*)["']""", tag)
         el = re.search(r"\belement\s*=\s*\{\s*<(\w+)", tag)

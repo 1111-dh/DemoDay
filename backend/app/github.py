@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
@@ -16,6 +18,7 @@ API = "https://api.github.com"
 RAW = "https://raw.githubusercontent.com"
 MAX_FILES = 80
 MAX_BYTES = 200_000
+EXTRA_FILES = 40  # 라우터가 import 하는 페이지 컴포넌트 (views/·screens/ 등 힌트 밖 경로)
 
 _URL = re.compile(r"^https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:/.*)?$")
 _SKIP_DIRS = (
@@ -33,6 +36,8 @@ _SKIP_DIRS = (
 )
 _CODE_EXT = (".tsx", ".jsx", ".ts", ".js")
 _ROUTE_HINTS = ("app/", "pages/", "routes", "router", "App.", "main.")
+_IMPORT_SPEC = re.compile(r"""(?:from\s+|import\s*\(\s*)["'](\.{1,2}/[^"']+|@/[^"']+)["']""")
+log = logging.getLogger(__name__)
 _TEST_HINT = re.compile(r"(\.test\.|\.spec\.|\.stories\.|__tests__/)")
 
 
@@ -96,6 +101,62 @@ def select_files(blobs: list[dict], limit: int = MAX_FILES) -> list[str]:
     return sorted(wanted, key=_rank)[:limit]
 
 
+def _resolve(spec: str, from_file: str, known: set[str]) -> str | None:
+    """`./x`·`../x`·`@/x`(가장 가까운 src/ 기준) → 레포 안 실제 코드 파일."""
+    if spec.startswith("@/"):
+        parts = from_file.split("/")[:-1]
+        while parts and parts[-1] != "src":
+            parts.pop()
+        if not parts:
+            return None
+        parts += spec[2:].split("/")
+    else:
+        parts = from_file.split("/")[:-1]
+        for seg in spec.split("/"):
+            if seg == "..":
+                parts = parts[:-1]
+            elif seg != ".":
+                parts.append(seg)
+    base = "/".join(parts)
+    for cand in [base, *(base + e for e in _CODE_EXT), *(f"{base}/index{e}" for e in _CODE_EXT)]:
+        if cand in known and cand.endswith(_CODE_EXT):
+            return cand
+    return None
+
+
+def router_imports(files: dict[str, str], blobs: list[dict]) -> list[str]:
+    """받은 라우터 파일(_rank 1)이 import 하는 아직 안 받은 코드 파일."""
+    sizes = {b["path"]: b.get("size", 0) for b in blobs}
+    known = set(sizes)
+    out: list[str] = []
+    for path, src in files.items():
+        if _rank(path) != 1:
+            continue
+        for spec in _IMPORT_SPEC.findall(src):
+            target = _resolve(spec, path, known)
+            if (
+                target
+                and target not in files
+                and target not in out
+                and sizes[target] <= MAX_BYTES
+                and not any(f"/{d}" in f"/{target}" for d in _SKIP_DIRS)
+                and not _TEST_HINT.search(target)
+            ):
+                out.append(target)
+    return out[:EXTRA_FILES]
+
+
+def _download(client: httpx.Client, owner: str, repo: str, sha: str, paths: list[str]) -> dict:
+    """파일 하나가 실패해도 전체를 멈추지 않는다 — 그 파일만 빼고 기록."""
+    files: dict[str, str] = {}
+    for p in paths:
+        try:
+            files[p] = _get(client, f"{RAW}/{owner}/{repo}/{sha}/{quote(p)}", {}).text
+        except RepoError as e:
+            log.warning("파일 건너뜀 %s: %s", p, e)
+    return files
+
+
 def _get(client: httpx.Client, url: str, headers: dict[str, str]) -> httpx.Response:
     try:
         res = client.get(url, headers=headers)
@@ -124,15 +185,21 @@ def fetch_repo(
 
     cache = cache_dir / f"{owner}__{repo}__{sha}.json"
     if cache.exists():
-        return RepoSnapshot.from_json(cache.read_text())
+        try:
+            return RepoSnapshot.from_json(cache.read_text())
+        except (ValueError, TypeError):
+            log.warning("깨진 캐시 무시: %s", cache.name)
 
     tree = _get(client, f"{API}/repos/{owner}/{repo}/git/trees/{sha}?recursive=1", headers).json()
     blobs = [t for t in tree.get("tree", []) if t.get("type") == "blob"]
     all_paths = [t["path"] for t in blobs]
     targets = select_files(blobs)
 
-    files = {p: _get(client, f"{RAW}/{owner}/{repo}/{sha}/{p}", {}).text for p in targets}
+    files = _download(client, owner, repo, sha, targets)
+    files |= _download(client, owner, repo, sha, router_imports(files, blobs))
     snap = RepoSnapshot(owner=owner, repo=repo, sha=sha, paths=all_paths, files=files)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache.write_text(snap.to_json())
+    tmp = cache.with_suffix(".tmp")
+    tmp.write_text(snap.to_json())
+    os.replace(tmp, cache)
     return snap

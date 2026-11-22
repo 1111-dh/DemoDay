@@ -9,13 +9,14 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from app.analyze.jsx import tag_end
+
 Kind = Literal["button", "link", "input"]
 MAX_TEXT = 30
 
-_BUTTON = re.compile(r"<button\b([^>]*)>(.*?)</button>", re.S)
-_LINK = re.compile(r"<(Link|a)\b([^>]*)>(.*?)</\1>", re.S)
-_INPUT = re.compile(r"<input\b([^>]*?)/?>", re.S)
+_OPEN = re.compile(r"<(button|Link|a|input)\b")
 _TAG = re.compile(r"<[^>]+>")
+_KIND: dict[str, Kind] = {"button": "button", "Link": "link", "a": "link"}
 
 
 @dataclass
@@ -26,8 +27,8 @@ class Element:
 
 
 def _attr(attrs: str, name: str) -> str | None:
-    m = re.search(rf'\b{name}\s*=\s*"([^"]*)"', attrs) or re.search(
-        rf"\b{name}\s*=\s*'([^']*)'", attrs
+    m = re.search(rf'(?<![\w-]){name}\s*=\s*"([^"]*)"', attrs) or re.search(
+        rf"(?<![\w-]){name}\s*=\s*'([^']*)'", attrs
     )
     return m.group(1).strip() if m else None
 
@@ -59,14 +60,20 @@ def _input(attrs: str) -> Element | None:
 
 def extract_elements(source: str, limit: int = 15) -> list[Element]:
     found: list[tuple[int, Element]] = []
-    for m in _BUTTON.finditer(source):
-        if el := _clickable("button", m.group(1), m.group(2)):
-            found.append((m.start(), el))
-    for m in _LINK.finditer(source):
-        if el := _clickable("link", m.group(2), m.group(3)):
-            found.append((m.start(), el))
-    for m in _INPUT.finditer(source):
-        if el := _input(m.group(1)):
+    for m in _OPEN.finditer(source):
+        tag = m.group(1)
+        end, self_closing = tag_end(source, m.end())
+        attrs = source[m.end() : end - (2 if self_closing else 1)]
+        if tag == "input":
+            el = _input(attrs)
+        elif self_closing:
+            continue
+        else:
+            close = source.find(f"</{tag}>", end)
+            if close < 0:
+                continue
+            el = _clickable(_KIND[tag], attrs, source[end:close])
+        if el:
             found.append((m.start(), el))
 
     out: list[Element] = []

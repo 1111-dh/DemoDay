@@ -10,20 +10,31 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from app import paths
+from app.contracts import schema_errors
 from app.github import RepoError
+
+
+class ContractError(Exception):
+    def __init__(self, errors: list[str]):
+        super().__init__("계약 위반:\n" + "\n".join(f"- {e}" for e in errors))
 
 
 def analyze(repo: str, url: str, out: str) -> None:
     from app.llm import get_llm
     from app.scenario import analyze as run_analyze
 
-    scenario = run_analyze(repo, url, Path(out).parent, get_llm())
+    out_path = Path(out)
+    scenario = run_analyze(repo, url, out_path.parent, get_llm())
+    if errors := schema_errors("scenario", scenario):
+        raise ContractError(errors)
+    out_path.write_text(json.dumps(scenario, ensure_ascii=False, indent=2))
     print(f"✓ scenario {len(scenario['steps'])}단계 → {out}")
 
 
@@ -64,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             facts(args.repo)
         else:
             scene(args.run, args.total_sec, not args.no_architecture)
-    except RepoError as e:
+    except (RepoError, ContractError) as e:
         print(f"✗ {e}", file=sys.stderr)
         return 1
     except NotImplementedError as e:

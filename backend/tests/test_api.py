@@ -130,3 +130,39 @@ def test_files_blocks_traversal(client):
     assert client.get(f"/api/runs/{rid}/files/%2e%2e%2f%2e%2e%2f.env").status_code == 404
     with pytest.raises(KeyError):
         runs.run_dir("../cache")
+
+
+def test_build_and_scene_rejected_while_busy(client):  # 리뷰 #5
+    rid = create(client)["id"]
+    runs.write_status(rid, stage="capturing")
+    assert client.post(f"/api/runs/{rid}/build", json={}).status_code == 409
+    doc = json.loads((FIXTURES / "scene.json").read_text())
+    assert client.put(f"/api/runs/{rid}/scene", json=doc).status_code == 409
+
+
+def test_status_written_atomically(client, monkeypatch):  # 리뷰 #5
+    import os
+
+    replaced = []
+    real = os.replace
+    monkeypatch.setattr(os, "replace", lambda a, b: (replaced.append(str(b)), real(a, b)))
+    rid = create(client)["id"]
+    runs.write_status(rid, stage="analyzed")
+    assert any(p.endswith("status.json") for p in replaced)
+
+
+def test_create_run_unexpected_error_has_detail(client, monkeypatch):  # 리뷰 #7
+    def boom(*a, **k):
+        raise ValueError("깨진 캐시")
+
+    monkeypatch.setattr(scenario, "analyze", boom)
+    res = client.post("/api/runs", json={"repo": "https://github.com/o/r", "url": "https://x.dev"})
+    assert res.status_code == 500
+    assert "깨진 캐시" in res.json()["detail"]
+
+
+def test_get_run_tolerates_half_written_scene(client):  # 리뷰 #5
+    rid = create(client)["id"]
+    (runs.run_dir(rid) / "scene.json").write_text('{"fps": 3')
+    res = client.get(f"/api/runs/{rid}")
+    assert res.status_code == 200 and "scene" not in res.json()
