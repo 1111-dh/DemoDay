@@ -1,0 +1,5 @@
+{"baseUrl": "https://sample.vercel.app", "steps": [
+  {"id": 1, "action": "goto", "path": "/", "caption": "메인 화면"},
+  {"id": 2, "action": "click", "selector": "text=검색", "caption": "검색 기능"},
+  {"id": 3, "action": "type", "selector": "input[name=q]", "value": "React", "caption": "키워드 입력"}
+]}

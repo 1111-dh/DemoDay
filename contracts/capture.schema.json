@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://demoday.local/contracts/capture.schema.json",
+  "title": "Capture",
+  "description": "B(캡처) → A(장면 생성). 단계별 실제 화면 스크린샷과 클릭 좌표. image 경로는 run 디렉터리 기준 상대경로.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["viewport", "shots"],
+  "properties": {
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["w", "h"],
+      "properties": {
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Shot" }
+    }
+  },
+  "$defs": {
+    "Point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "Shot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepId", "image", "click"],
+      "properties": {
+        "stepId": { "type": "integer", "minimum": 1 },
+        "image": { "type": "string", "description": "예: shots/2.png (run 디렉터리 기준)" },
+        "click": {
+          "description": "클릭 좌표(뷰포트 px). 클릭이 없는 단계는 null",
+          "anyOf": [{ "$ref": "#/$defs/Point" }, { "type": "null" }]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "fallback"],
+          "default": "ok",
+          "description": "fallback = 셀렉터를 못 찾아 정적 스크린샷으로 대체한 단계"
+        },
+        "atMs": { "type": "integer", "minimum": 0, "description": "캡처 시작 기준 화면 전환 시점(ms)" }
+      }
+    }
+  }
+}

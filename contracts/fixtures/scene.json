@@ -1,0 +1,5 @@
+{"fps": 30, "totalSec": 15, "scenes": [
+  {"type": "title", "durationSec": 3, "text": "프로젝트명"},
+  {"type": "screen", "durationSec": 6, "image": "shots/2.png", "zoom": {"x": 640, "y": 120, "scale": 1.6}, "cursor": {"x": 640, "y": 120}, "caption": "검색 기능"},
+  {"type": "architecture", "durationSec": 6, "nodes": ["Next.js", "FastAPI", "PostgreSQL"], "edges": [[0, 1], [1, 2]]}
+]}

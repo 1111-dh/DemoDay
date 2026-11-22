@@ -1,0 +1,13 @@
+{
+  "name": "@demoday/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./ts/index.ts",
+  "types": "./ts/index.ts",
+  "exports": {
+    ".": "./ts/index.ts",
+    "./fixtures/*": "./fixtures/*",
+    "./schemas/*": "./*"
+  }
+}

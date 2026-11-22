@@ -1,0 +1,4 @@
+{"viewport": {"w": 1280, "h": 720}, "shots": [
+  {"stepId": 1, "image": "shots/1.png", "click": null},
+  {"stepId": 2, "image": "shots/2.png", "click": {"x": 640, "y": 120}}
+]}

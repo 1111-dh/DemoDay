@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://demoday.local/contracts/scene.schema.json",
+  "title": "SceneDoc",
+  "description": "A(장면 생성) → B(렌더링), C(미리보기·수정). LLM은 영상이 아니라 이 JSON만 만든다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fps", "totalSec", "scenes"],
+  "properties": {
+    "fps": { "type": "integer", "enum": [24, 30, 60] },
+    "totalSec": { "type": "number", "exclusiveMinimum": 0, "description": "목표 발표 시간(초). 렌더 시 장면 길이를 이 비율로 맞춘다" },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/TitleScene" },
+          { "$ref": "#/$defs/ScreenScene" },
+          { "$ref": "#/$defs/ArchitectureScene" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "Transition": { "type": "string", "enum": ["none", "fade", "slide"], "default": "fade" },
+    "Point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+    },
+    "Zoom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "scale"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "scale": { "type": "number", "minimum": 1, "maximum": 4 }
+      }
+    },
+    "TitleScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationSec", "text"],
+      "properties": {
+        "type": { "const": "title" },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+        "transition": { "$ref": "#/$defs/Transition" },
+        "text": { "type": "string" },
+        "subtitle": { "type": "string" }
+      }
+    },
+    "ScreenScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationSec", "image"],
+      "properties": {
+        "type": { "const": "screen" },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+        "transition": { "$ref": "#/$defs/Transition" },
+        "image": { "type": "string", "description": "run 디렉터리 기준 상대경로. 예: shots/2.png" },
+        "zoom": { "$ref": "#/$defs/Zoom" },
+        "cursor": { "$ref": "#/$defs/Point" },
+        "caption": { "type": "string" }
+      }
+    },
+    "ArchitectureScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationSec", "nodes", "edges"],
+      "properties": {
+        "type": { "const": "architecture" },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+        "transition": { "$ref": "#/$defs/Transition" },
+        "nodes": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "edges": {
+          "type": "array",
+          "description": "[from, to] — nodes 배열 인덱스",
+          "items": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
+    }
+  }
+}

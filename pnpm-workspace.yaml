@@ -1,0 +1,12 @@
+packages:
+  - contracts
+  - capture
+  - render
+  - web
+
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
+
+onlyBuiltDependencies:
+  - esbuild

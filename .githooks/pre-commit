@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# 모든 사람(Claude Code·Codex·직접 작업) 공통. 설치: make setup (git config core.hooksPath .githooks)
+staged="$(git diff --cached --name-only)"
+contract="$(echo "$staged" | grep -E '^contracts/(.*\.schema\.json|fixtures/)' || true)"
+if [[ -n "$contract" && "${DEMODAY_CONTRACT_CHANGE:-}" != "1" ]]; then
+  echo "✋ 계약 파일이 커밋에 포함됐습니다:"; echo "$contract" | sed 's/^/   /'
+  echo "   팀 합의를 마쳤다면: DEMODAY_CONTRACT_CHANGE=1 git commit ..."
+  exit 1
+fi
+make check || { echo "✗ make check 실패 — 커밋 중단"; exit 1; }
