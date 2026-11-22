@@ -65,24 +65,39 @@ def _readme(snap: RepoSnapshot) -> str:
     return ""
 
 
+_H1 = re.compile(r"^#\s+(.+)|^\s*<h1[^>]*>(.*?)</h1>", re.IGNORECASE)
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+# 강조 기호는 단어 밖에서만 (snake_case_names·2*3*4 는 그대로)
+_MD_EMPHASIS = re.compile(r"(?<![\w*])(\*\*|__|\*|_)(\S(?:.*?\S)?)\1(?![\w*])")
+
+
 def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
+    """첫 제목(# 또는 <h1>)과 그 뒤 첫 문단. 코드 블록 안의 '# 주석'은 제목이 아니다."""
     lines = readme.splitlines()
-    name, start = fallback, 0
+    name, start, fenced = fallback, 0, False
     for i, line in enumerate(lines):
-        if m := re.match(r"^#\s+(.+)", line):
-            name, start = m.group(1).strip(), i + 1
-            break
+        if _FENCE.match(line):
+            fenced = not fenced
+            continue
+        if not fenced and (m := _H1.match(line)):
+            title = _HTML_TAG.sub("", m.group(1) or m.group(2) or "").strip()
+            if title:
+                name, start = title, i + 1
+                break
     para: list[str] = []
     for line in lines[start:]:
         if not line.strip():
             if para:
                 break
             continue
-        if line.lstrip().startswith(("#", "!", "<", "[!", "```")):
+        if line.lstrip().startswith(("#", "!", "<", "[!", "```", "~~~")):
             if para:
                 break
             continue
-        para.append(line.strip())
+        text = _MD_LINK.sub(r"\1", line.strip().removeprefix(">").strip())
+        while (plain := _MD_EMPHASIS.sub(r"\2", text)) != text:  # **…_…_…** 겹친 강조
+            text = plain
+        para.append(text)
     return name, " ".join(para)[:SUMMARY_LIMIT]
 
 
