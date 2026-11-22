@@ -24,7 +24,7 @@ from app.llm import LLM, generate
 MAX_STEPS = 7
 MAX_PROMPT = 500
 README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
-SCENARIO_VERSION = 7  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 8  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -88,6 +88,9 @@ def with_reference(user: str, prompt: str | None, use: str) -> str:
     return user + REFERENCE.format(use=use, prompt=prompt) if prompt else user
 
 
+# 첫 가입 직후 화면 — 온보딩을 마친 데모 계정에선 리다이렉트되거나, 진행하면 데이터를 만든다
+_FIRST_RUN = re.compile(r"(?:^|/)(?:onboarding|welcome|setup|get-?started)(?=$|/)", re.IGNORECASE)
+
 # 단계형 화면의 2단계 이후(/input/2, /step/3) — 앞 단계 입력 없이 가면 깨진다. 1단계만
 _LATER_STEP = re.compile(r"(?:^|/)(?:input|step|steps|wizard|stage)/(?:[2-9]|\d{2,})(?=$|/)", re.I)
 
@@ -98,7 +101,12 @@ def _demo_page(path: str, dynamic: bool) -> bool:
 
 def _shown(path: str) -> bool:
     """데모에 보여줄 만한 화면(로그인·약관·결과·단계형 중간 제외). 동적 여부와는 따로 본다."""
-    return not (_NOT_DEMO.search(path) or _STATEFUL.search(path) or _LATER_STEP.search(path))
+    return not (
+        _NOT_DEMO.search(path)
+        or _STATEFUL.search(path)
+        or _LATER_STEP.search(path)
+        or _FIRST_RUN.search(path)
+    )
 
 
 def _click_only_pages(facts: RepoFacts) -> dict[str, set[str]]:
