@@ -9,7 +9,7 @@ fail() { { echo "✗ $rel 검사 실패:"; echo "$1" | head -30; } >&2; exit 2; 
 case "$rel" in
   backend/*.py)
     (cd backend && uv run -q ruff format "${rel#backend/}" >/dev/null 2>&1)
-    out="$(cd backend && uv run -q ruff check "${rel#backend/}" 2>&1)" || fail "$out" ;;
+    out="$(cd backend && uv run -q ruff check --fix "${rel#backend/}" 2>&1)" || fail "$out" ;;
   capture/*.ts|capture/*.tsx|render/*.ts|render/*.tsx|web/*.ts|web/*.tsx)
     pkg="${rel%%/*}"
     out="$(cd "$pkg" && pnpm exec tsc --noEmit --pretty false 2>&1)" || fail "$out" ;;
