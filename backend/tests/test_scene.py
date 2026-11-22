@@ -132,12 +132,9 @@ def _copy(**kw):
 def test_story_cards_from_copy(scenario, capture):
     copy = _copy(problem="회의록 정리는 늘 PM 몫", closing="회의만 하면 할 일이 정리됩니다")
     scenes = assemble(scenario, capture["shots"], FACTS, 60, True, copy)["scenes"]
-    assert scenes[1] == {"type": "title", "durationSec": 3, "text": "회의록 정리는 늘 PM 몫"}
-    assert scenes[-2] == {
-        "type": "title",
-        "durationSec": 3,
-        "text": "회의만 하면 할 일이 정리됩니다",
-    }
+    card = {"type": "title", "durationSec": 3}
+    assert scenes[1] == {**card, "text": "회의록 정리는 늘 PM 몫", "kicker": "문제"}
+    assert scenes[-2] == {**card, "text": "회의만 하면 할 일이 정리됩니다", "kicker": "정리"}
     assert scenes[-1]["type"] == "architecture"
 
 
@@ -168,3 +165,112 @@ def test_cards_stay_short_for_title_style():  # 최종 리뷰 #3 — kicker 전�
     from app.scene import MAX_CARD
 
     assert MAX_CARD <= 28
+
+
+def _clip_shots(*clips):
+    return [
+        {"stepId": 1, "image": "shots/1.png", "click": None, "status": "ok", "clip": c}
+        for c in clips
+    ]
+
+
+def test_clip_becomes_video(scenario):
+    shots = _clip_shots({"startMs": 1200, "endMs": 4700}, {"startMs": 4700, "endMs": 14700})
+    doc = assemble(scenario, shots, FACTS, 60, False, None, video="capture.webm")
+    s1, s2 = doc["scenes"][1:]
+    assert s1["video"] == {"src": "capture.webm", "startMs": 1200, "endMs": 4700}
+    assert s1["durationSec"] == 3.5 and s2["durationSec"] == 8  # MAX_CLIP_SEC
+    assert schema_errors("scene", doc) == []
+    no_video = assemble(scenario, shots, FACTS, 60, False, None)
+    assert all("video" not in s for s in no_video["scenes"])
+
+
+def test_fallback_shot_gets_no_video(scenario):
+    shots = _clip_shots({"startMs": 0, "endMs": 3000})
+    shots[0]["status"] = "fallback"
+    screen = assemble(scenario, shots, FACTS, 60, False, None, video="capture.webm")["scenes"][1]
+    assert "video" not in screen and screen["durationSec"] == 2
+
+
+def test_highlight_only_words_in_caption(scenario, capture):
+    copy = _copy(
+        captions=["녹음 파일로 올립니다", "검색"], highlights=[["녹음 파일", "없는말"], []]
+    )
+    s1, s2 = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"][1:]
+    assert s1["highlight"] == ["녹음 파일"]
+    assert "highlight" not in s2
+
+
+def test_cards_get_kicker(scenario, capture):
+    copy = _copy(problem="회의록 정리는 늘 PM 몫", closing="회의만 하면 정리됩니다")
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
+    assert "kicker" not in scenes[0]
+    assert scenes[1]["kicker"] == "문제" and scenes[-1]["kicker"] == "정리"
+    assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
+
+
+def test_login_images_scene(scenario, capture):
+    login = ["shots/login-1.png", "shots/login-2.png"]
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, None, login_images=login)[
+        "scenes"
+    ]
+    a, b = scenes[1], scenes[2]
+    assert (a["image"], a["durationSec"], "caption" in a) == ("shots/login-1.png", 2, False)
+    assert (b["image"], b["caption"]) == ("shots/login-2.png", "테스트 계정으로 로그인")
+
+
+def test_build_scene_reads_video_and_login(tmp_path):
+    run = run_dir(tmp_path)
+    cap = json.loads((run / "capture.video.json").read_text())
+    (run / "capture.json").write_text(json.dumps(cap))
+    doc = build_scene(run, 60, False, None)
+    screens = [s for s in doc["scenes"] if s["type"] == "screen"]
+    assert "caption" not in screens[0] and screens[1]["caption"] == "테스트 계정으로 로그인"
+    assert any(s.get("video", {}).get("src") == "capture.webm" for s in screens)
+    assert schema_errors("scene", doc) == []
+
+
+def test_wrong_highlights_count_keeps_copy(tmp_path):  # 강조만 버리고 자막·카드는 살린다
+    llm = FakeLLM(_copy(highlights=[["a"]]))  # shot 2개인데 1개
+    doc = build_scene(run_dir(tmp_path), 60, False, llm)
+    assert len(llm.users) == 1 and doc["scenes"][0]["text"] == "T"
+    assert all("highlight" not in s for s in doc["scenes"])
+
+
+@pytest.mark.parametrize(
+    "clip", [{"startMs": 5000, "endMs": 3000}, {"startMs": 3000, "endMs": 3000}]
+)
+def test_bad_clip_falls_back_to_image(scenario, clip):  # Task 6~7 리뷰 #1
+    screen = assemble(scenario, _clip_shots(clip), FACTS, 60, False, None, video="capture.webm")[
+        "scenes"
+    ][1]
+    assert "video" not in screen and screen["durationSec"] == 4
+
+
+def test_build_scene_tolerates_null_login(tmp_path):  # Task 6~7 리뷰 #7 — 실패해도 영상은 나와야
+    run = run_dir(tmp_path)
+    cap = json.loads((run / "capture.json").read_text())
+    (run / "capture.json").write_text(json.dumps({**cap, "login": None}))
+    assert build_scene(run, 60, False, None)["scenes"][1]["type"] == "screen"
+
+
+def test_login_scenes_come_after_problem_card(scenario, capture):
+    copy = _copy(problem="회의록 정리는 늘 PM 몫")
+    login = ["shots/login-1.png", "shots/login-2.png"]
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy, login_images=login)[
+        "scenes"
+    ]
+    kinds = [(s["type"], s.get("kicker") or s.get("image")) for s in scenes]
+    assert kinds[:4] == [
+        ("title", None),
+        ("title", "문제"),
+        ("screen", "shots/login-1.png"),
+        ("screen", "shots/login-2.png"),
+    ]
+
+
+def test_highlight_dedupes_and_prefers_longer_word(scenario, capture):
+    words = [["녹음", "녹음 파일", "녹음 파일"], []]
+    copy = _copy(captions=["녹음 파일로 올립니다", "검색"], highlights=words)
+    screen = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"][1]
+    assert screen["highlight"] == ["녹음 파일"]
