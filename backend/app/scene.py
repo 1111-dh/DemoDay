@@ -29,7 +29,7 @@ MAX_CLIP_SEC = 8  # 녹화 구간이 길어도 장면은 이 이상 늘리지 �
 LOGIN_SEC = 2
 LOGIN_CAPTION = "테스트 계정으로 로그인"
 MAX_HIGHLIGHTS = 2
-MAX_CARD = 28  # B의 kicker 장 구분 카드 전까지 제목 스타일(84px)로 그려진다 — 두 줄 이내
+MAX_CARD = 28  # 문제·정리 카드는 큰 글씨 장 구분 카드로 그려진다 — 두 줄 이내
 SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 
@@ -63,7 +63,10 @@ def _card(text: str, kicker: str) -> dict:
 
 
 def _highlight(caption: str, words: list[str]) -> list[str]:
-    return [w for w in words if w.strip() and w in caption][:MAX_HIGHLIGHTS]
+    """caption 에 실제로 있는 단어만. 중복·더 긴 단어에 포함된 단어는 뺀다(긴 쪽 우선)."""
+    found = sorted({w.strip() for w in words if w.strip() and w.strip() in caption}, key=len)
+    kept = [w for i, w in enumerate(found) if not any(w in longer for longer in found[i + 1 :])]
+    return sorted(kept, key=caption.index)[:MAX_HIGHLIGHTS]
 
 
 def assemble(
@@ -84,21 +87,24 @@ def assemble(
     if subtitle:
         title["subtitle"] = subtitle
     scenes: list[dict] = [title]
-    for j, image in enumerate(login_images or []):
+    if copy and copy.problem.strip():
+        scenes.append(_card(copy.problem.strip(), "문제"))
+    for j, image in enumerate(login_images or []):  # 문제 → (로그인) → 해결 화면
         login: dict = {"type": "screen", "durationSec": LOGIN_SEC, "image": image}
         if j == len(login_images) - 1:
             login["caption"] = LOGIN_CAPTION
         scenes.append(login)
-    if copy and copy.problem.strip():
-        scenes.append(_card(copy.problem.strip(), "문제"))
 
+    # 강조 개수가 shot 수와 다르면 강조만 버린다 (자막·카드는 살린다)
+    highlights = copy.highlights if copy and len(copy.highlights) == len(shots) else None
     for i, shot in enumerate(shots):
         caption = copy.captions[i] if copy else step_caption.get(shot["stepId"], "")
         screen: dict = {"type": "screen", "image": shot["image"]}
         if shot.get("status", "ok") == "fallback":
             screen["durationSec"] = FALLBACK_SEC
         elif video and (clip := shot.get("clip")) and clip["endMs"] > clip["startMs"]:
-            # 움직임은 실제 길이대로 — weight 대신 구간 길이 (렌더가 재생 속도로 맞춘다)
+            # weight 대신 녹화 구간 길이를 비중으로 쓴다. 전체 길이는 렌더가 totalSec 에 맞춰
+            # 늘이고 줄이며, 구간과 다르면 재생 속도(0.5~2배)·마지막 프레임 정지로 맞춘다
             sec = (clip["endMs"] - clip["startMs"]) / 1000
             screen["durationSec"] = min(MAX_CLIP_SEC, max(FALLBACK_SEC, sec))
             screen["video"] = {"src": video, "startMs": clip["startMs"], "endMs": clip["endMs"]}
@@ -110,7 +116,7 @@ def assemble(
                 screen["cursor"] = {"x": click["x"], "y": click["y"]}
         if caption:
             screen["caption"] = caption
-            if copy and copy.highlights and (words := _highlight(caption, copy.highlights[i])):
+            if highlights and (words := _highlight(caption, highlights[i])):
                 screen["highlight"] = words
         scenes.append(screen)
 
@@ -164,8 +170,6 @@ def build_scene(
             errors.append(f"caption은 1~{MAX_CAPTION}자")
         if any(not W_MIN <= w <= W_MAX for w in c.weights):
             errors.append(f"weights는 {W_MIN}~{W_MAX}")
-        if c.highlights and len(c.highlights) != n:
-            errors.append(f"highlights는 비우거나 정확히 {n}개")
         if len(c.problem) > MAX_CARD or len(c.closing) > MAX_CARD:
             errors.append(f"problem·closing은 {MAX_CARD}자 이하")
         return errors

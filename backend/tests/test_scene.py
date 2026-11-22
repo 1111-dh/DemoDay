@@ -230,11 +230,11 @@ def test_build_scene_reads_video_and_login(tmp_path):
     assert schema_errors("scene", doc) == []
 
 
-def test_check_highlights_count(tmp_path):
-    bad = _copy(highlights=[["a"]])  # shot 2개인데 1개
-    llm = FakeLLM(bad, bad, bad)
-    build_scene(run_dir(tmp_path), 60, False, llm)
-    assert len(llm.users) == 3
+def test_wrong_highlights_count_keeps_copy(tmp_path):  # 강조만 버리고 자막·카드는 살린다
+    llm = FakeLLM(_copy(highlights=[["a"]]))  # shot 2개인데 1개
+    doc = build_scene(run_dir(tmp_path), 60, False, llm)
+    assert len(llm.users) == 1 and doc["scenes"][0]["text"] == "T"
+    assert all("highlight" not in s for s in doc["scenes"])
 
 
 @pytest.mark.parametrize(
@@ -252,3 +252,25 @@ def test_build_scene_tolerates_null_login(tmp_path):  # Task 6~7 리뷰 #7 — �
     cap = json.loads((run / "capture.json").read_text())
     (run / "capture.json").write_text(json.dumps({**cap, "login": None}))
     assert build_scene(run, 60, False, None)["scenes"][1]["type"] == "screen"
+
+
+def test_login_scenes_come_after_problem_card(scenario, capture):
+    copy = _copy(problem="회의록 정리는 늘 PM 몫")
+    login = ["shots/login-1.png", "shots/login-2.png"]
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy, login_images=login)[
+        "scenes"
+    ]
+    kinds = [(s["type"], s.get("kicker") or s.get("image")) for s in scenes]
+    assert kinds[:4] == [
+        ("title", None),
+        ("title", "문제"),
+        ("screen", "shots/login-1.png"),
+        ("screen", "shots/login-2.png"),
+    ]
+
+
+def test_highlight_dedupes_and_prefers_longer_word(scenario, capture):
+    words = [["녹음", "녹음 파일", "녹음 파일"], []]
+    copy = _copy(captions=["녹음 파일로 올립니다", "검색"], highlights=words)
+    screen = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"][1]
+    assert screen["highlight"] == ["녹음 파일"]
