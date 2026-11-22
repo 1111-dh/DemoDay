@@ -53,6 +53,17 @@ def _clean(inner: str) -> str | None:
     return text
 
 
+def _external(attrs: str) -> bool:
+    """다른 사이트로 나가거나 새 탭을 여는 링크 — 데모 화면 밖이라 누르지 않는다."""
+    target = _attr(attrs, "href") or _attr(attrs, "to") or ""
+    rel = _attr(attrs, "rel") or ""
+    return (
+        bool(re.match(r"(?:https?:)?//|mailto:|tel:", target))
+        or _attr(attrs, "target") == "_blank"
+        or bool(re.search(r"\bnoopener\b|\bnoreferrer\b", rel))
+    )
+
+
 def _clickable(kind: Kind, attrs: str, inner: str) -> Element | None:
     if (label := _attr(attrs, "aria-label")) and len(label) <= MAX_TEXT:
         return Element(kind, label, f'[aria-label="{label}"]')
@@ -79,6 +90,8 @@ def extract_elements(source: str, limit: int = 15) -> list[Element]:
         end, self_closing = tag_end(source, m.end())
         attrs = source[m.end() : end - (2 if self_closing else 1)]
         kind = _kind(tag)
+        if kind == "link" and _external(attrs):
+            continue
         if kind == "input":
             el = _input(attrs)
         elif self_closing:

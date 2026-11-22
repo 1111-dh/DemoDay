@@ -16,7 +16,6 @@ def test_extract_elements_literal_only():
     assert extract_elements(src) == [
         Element("button", "검색", "text=검색"),
         Element("link", "소개", "text=소개"),
-        Element("link", "외부 링크", "text=외부 링크"),
         Element("input", "q", "input[name=q]"),
         Element("input", "이메일", 'input[placeholder="이메일"]'),
     ]
@@ -83,3 +82,17 @@ def test_design_system_components():
         ("button", "text=로그인"),
         ("link", "text=회원가입"),
     ]
+
+
+def test_external_links_are_skipped():  # 데모에서 다른 사이트로 나가는 링크는 누르지 않는다
+    src = (
+        '<a href="https://vercel.com" aria-label="go to vercel">V</a>'
+        '<a href="//twitter.com/x" aria-label="Link to X account">X</a>'
+        '<a href="/about" target="_blank">새 탭</a>'
+        '<NuxtLink to="https://github.com/nuxt">GitHub</NuxtLink>'
+        '<NuxtLink to="/search">검색</NuxtLink>'
+        '<a href="/movies">영화</a>'
+        '<a :href="links.homepage" aria-label="Link to Homepage" rel="noopener">H</a>'
+        '<a href="mailto:a@b.c">메일</a>'
+    )
+    assert [e.text for e in extract_elements(src)] == ["검색", "영화"]

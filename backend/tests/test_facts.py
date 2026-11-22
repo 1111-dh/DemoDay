@@ -142,3 +142,24 @@ def test_readme_body_tilde_fence_and_inline_html():  # PR #10 리뷰 (B)
         '<p align="center">핵심 문장</p>\n<img src="a.png" />\n~~~bash\nnpm i\n~~~\n본문\n'
     )
     assert body == "핵심 문장\n본문"
+
+
+def test_name_from_html_h1_not_code_comment():  # nuxt/movies README
+    from app.analyze.facts import _name_and_summary
+
+    readme = (
+        '<p align="center"><img src="a.webp" /></p>\n\n'
+        '<h1 align="center">Nuxt Movies with tests</h1>\n<br>\n\n'
+        "> Movies app demo built using [Nuxt](https://nuxt.com) and [Vue](https://vuejs.org).\n\n"
+        "## Setup\n\n```bash\n# Enable pnpm\ncorepack enable\n```\n"
+    )
+    name, summary = _name_and_summary(readme, "movies")
+    assert name == "Nuxt Movies with tests"
+    assert summary == "Movies app demo built using Nuxt and Vue."
+
+
+def test_markdown_h1_inside_code_fence_is_ignored():
+    from app.analyze.facts import _name_and_summary
+
+    name, _ = _name_and_summary("intro text\n\n```sh\n# install\nnpm i\n```\n", "fallback")
+    assert name == "fallback"
