@@ -32,3 +32,18 @@ def test_edges_chain():
 
 def test_no_app_still_one_node():
     assert infer_architecture(RepoFacts("x", "", [], None, None, []))["nodes"] == ["Web App"]
+
+
+def test_frontend_names_for_other_frameworks():
+    assert infer_architecture(facts(["nuxt", "vue"], "nuxt"))["nodes"][0] == "Nuxt"
+    assert infer_architecture(facts(["vue", "vite"], "vue"))["nodes"][0] == "Vue"
+
+
+def test_sveltekit_and_flutter_nodes():
+    assert infer_architecture(facts(["@sveltejs/kit"], "sveltekit"))["nodes"][0] == "SvelteKit"
+    arch = infer_architecture(facts(["go_router", "firebase_core"], "flutter"))
+    assert arch["nodes"] == ["Flutter", "Firebase"]
+    assert infer_architecture(facts(["supabase_flutter"], "flutter"))["nodes"] == [
+        "Flutter",
+        "Supabase",
+    ]

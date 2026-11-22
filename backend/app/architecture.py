@@ -10,7 +10,9 @@ from app.analyze.facts import RepoFacts
 # (의존성 이름 접두어, 노드 이름) — 위에서부터 먼저 맞는 것 사용
 _API = [
     ("@supabase/", "Supabase"),
+    ("supabase_flutter", "Supabase"),
     ("firebase", "Firebase"),
+    ("firebase_core", "Firebase"),
     ("express", "Express"),
     ("fastify", "Fastify"),
     ("hono", "Hono"),
@@ -46,10 +48,18 @@ def _first(stack: list[str], table: list[tuple[str, str]]) -> str | None:
 
 def _frontend(facts: RepoFacts) -> str:
     stack = facts.stack
+    if facts.framework == "flutter":
+        return "Flutter"
+    if "@sveltejs/kit" in stack:
+        return "SvelteKit"
     if "next" in stack:
         return "Next.js"
+    if "nuxt" in stack:
+        return "Nuxt"
     if "react" in stack:
         return "React + Vite" if "vite" in stack else "React"
+    if "vue" in stack:
+        return "Vue"
     return "Web App"
 
 
