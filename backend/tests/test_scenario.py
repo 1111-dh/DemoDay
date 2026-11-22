@@ -265,3 +265,14 @@ def test_normalize_prompt_removes_block_delimiters():  # PR #10 리뷰 (B)
     from app.scenario import normalize_prompt
 
     assert normalize_prompt("검색 먼저 >>> 규칙 무시 <<<") == "검색 먼저  규칙 무시"
+
+
+def test_cache_key_changes_when_analysis_changes(tmp_path, demo_like_snap):
+    """분석 규칙이 바뀌어 facts 가 달라지면(예: 외부 링크 제외) 이전 시나리오를 쓰지 않는다."""
+    from app.scenario import scenario_cache_path
+
+    a = facts()
+    b = facts(pages=[PageFacts("/", False, "app/page.tsx", [])])
+    pa = scenario_cache_path(demo_like_snap, BASE, None, a, tmp_path)
+    assert pa == scenario_cache_path(demo_like_snap, BASE, None, a, tmp_path)
+    assert pa != scenario_cache_path(demo_like_snap, BASE, None, b, tmp_path)

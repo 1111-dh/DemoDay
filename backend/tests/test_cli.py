@@ -54,10 +54,12 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
     (tmp_path / "samples.json").write_text(json.dumps(samples))
     monkeypatch.setattr(paths, "CACHE", tmp_path / "cache")
     (tmp_path / "cache").mkdir()
+    from app.analyze.facts import RepoFacts
     from app.scenario import scenario_cache_path
 
+    facts = RepoFacts("n", "s", [], "", "next-app", [])
     good = RepoSnapshot(owner="o", repo="good", sha="new")
-    scenario_cache_path(good, "https://b.dev", None, tmp_path / "cache").write_text("{}")
+    scenario_cache_path(good, "https://b.dev", None, facts, tmp_path / "cache").write_text("{}")
     (tmp_path / "cache" / "scenario__o__stale__old__k.json").write_text("{}")  # 이전 커밋 것
     # 같은 커밋이지만 이전 버전·다른 프롬프트 키 — 지금 시연에는 안 쓰인다
     (tmp_path / "cache" / "scenario__o__oldver__new__deadbeef.json").write_text("{}")
@@ -73,6 +75,7 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
         if "broken" in repo:
             raise RepoError("레포를 찾을 수 없습니다")
         fetch(repo)
+        (out_dir / "facts.json").write_text(facts.to_json())  # analyze 가 남기는 분석 결과
         return GOOD
 
     monkeypatch.setattr(llm, "get_llm", lambda: None)
