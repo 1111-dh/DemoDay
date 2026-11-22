@@ -276,3 +276,45 @@ def test_cache_key_changes_when_analysis_changes(tmp_path, demo_like_snap):
     pa = scenario_cache_path(demo_like_snap, BASE, None, a, tmp_path)
     assert pa == scenario_cache_path(demo_like_snap, BASE, None, a, tmp_path)
     assert pa != scenario_cache_path(demo_like_snap, BASE, None, b, tmp_path)
+
+
+def _danger_facts():
+    els = [
+        Element("button", "로그아웃", 'role=button[name="로그아웃"]'),
+        Element("button", "회원 탈퇴", "text=회원 탈퇴"),
+        Element("button", "삭제", "text=삭제"),
+        Element("button", "Sign out", "text=Sign out"),
+        Element("button", "결제하기", "text=결제하기"),
+        Element("button", "추천받기", 'role=button[name="추천받기"]'),
+    ]
+    return facts(pages=[PageFacts("/", False, "app/page.tsx", els)])
+
+
+def test_dangerous_buttons_hidden_from_llm():  # 로그아웃·삭제·탈퇴·결제는 데모에서 누르지 않는다
+    llm = FakeLLM(None, None, None)
+    build_scenario(_danger_facts(), BASE, llm)
+    shown = llm.users[0]
+    for word in ["로그아웃", "회원 탈퇴", "text=삭제", "Sign out", "결제하기"]:
+        assert word not in shown, word
+    assert "추천받기" in shown
+
+
+def test_dangerous_click_dropped_even_if_llm_picks_it():
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/"),
+            step("click", selector='role=button[name="로그아웃"]'),
+            step("click", selector='role=button[name="추천받기"]'),
+        ]
+    )
+    steps = ground(draft, _danger_facts())
+    assert [s.get("selector") for s in steps] == [None, 'role=button[name="추천받기"]']
+
+
+def test_later_wizard_steps_are_not_demo_targets():  # 안정형 /#/input/2·3 → 앞 단계 상태 없음
+    from app.scenario import _demo_page
+
+    for p in ["/#/input/2", "/#/input/3", "/onboarding/step/2", "/wizard/10"]:
+        assert not _demo_page(p, False), p
+    for p in ["/#/input/1", "/step/1", "/posts/2024-review", "/v2/home"]:
+        assert _demo_page(p, False), p
