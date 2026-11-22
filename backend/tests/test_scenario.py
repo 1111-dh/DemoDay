@@ -454,3 +454,12 @@ def test_approval_navigation_links_still_allowed():
     assert _safe(Element("link", "확인 요청 보기", "text=확인 요청 보기"))
     assert not _safe(Element("button", "승인하기", "text=승인하기"))
     assert not _safe(Element("button", " 반려 ", "text=반려"))
+
+
+def test_onboarding_pages_are_not_demo():  # 온보딩을 마친 데모 계정 — 리다이렉트·데이터 생성
+    from app.scenario import _demo_page, _shown
+
+    for p in ["/onboarding/create_workspace", "/onboarding/start", "/welcome", "/setup/profile"]:
+        assert not _demo_page(p, False), p
+    assert not _shown("/onboarding/:workspaceId/:step")
+    assert _demo_page("/workspaces", False) and _demo_page("/settings", False)
