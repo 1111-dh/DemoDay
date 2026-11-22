@@ -273,3 +273,15 @@ def test_create_run_prompt_too_long_422(client):
 def test_create_run_passes_prompt(client):
     assert _post(client, prompt="검색 위주").status_code == 200
     assert SEEN["prompt"] == "검색 위주"
+
+
+def test_files_endpoint_never_serves_secrets(client):  # 최종 리뷰 #1
+    res = _post(
+        client,
+        repo="https://github.com/o/login-app",
+        login={"username": "demo@x.dev", "password": "pw-123"},
+    )
+    rid = res.json()["id"]
+    (runs.run_dir(rid) / "prompt.txt").write_text("p")
+    for name in ["scenario.json", "facts.json", "status.json", "prompt.txt"]:
+        assert client.get(f"/api/runs/{rid}/files/{name}").status_code == 404, name

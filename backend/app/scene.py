@@ -25,7 +25,7 @@ ZOOM = 1.6
 W_MIN, W_MAX = 0.5, 2.0
 MAX_CAPTION = 30
 CARD_SEC = 3  # 문제·정리 카드
-MAX_CARD = 40
+MAX_CARD = 28  # B의 kicker 장 구분 카드 전까지 제목 스타일(84px)로 그려진다 — 두 줄 이내
 SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 

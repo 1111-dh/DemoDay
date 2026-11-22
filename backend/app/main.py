@@ -161,10 +161,15 @@ def put_scene(rid: str, body: dict, tasks: BackgroundTasks) -> dict:
     return {"id": rid, "stage": "queued"}
 
 
+def _servable(rel) -> bool:
+    """화면·영상만 내보낸다. scenario.json(로그인 값)·facts·status·prompt 는 API로만."""
+    return rel.parts[0] == "shots" or rel.suffix in (".mp4", ".webm")
+
+
 @app.get("/api/runs/{rid}/files/{path:path}")
 def get_file(rid: str, path: str) -> FileResponse:
     d = _dir(rid).resolve()
     f = (d / path).resolve()
-    if not f.is_relative_to(d) or not f.is_file():
+    if not f.is_relative_to(d) or not f.is_file() or not _servable(f.relative_to(d)):
         raise HTTPException(404, "파일 없음")
     return FileResponse(f)

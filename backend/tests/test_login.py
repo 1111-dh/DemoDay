@@ -72,3 +72,33 @@ def test_login_steps_none_for_social_only():
         ],
     )
     assert login_steps(_facts(page), "u", "p") is None
+
+
+def test_login_steps_skips_social_buttons():  # 최종 리뷰 #2
+    page = PageFacts(
+        "/login",
+        False,
+        "f",
+        [
+            Element("button", "카카오 로그인", "text=카카오 로그인"),
+            Element("input", "email", "input[name=email]"),
+            Element("input", "password", "input[name=password]"),
+            Element("button", "로그인", "text=로그인"),
+            Element("button", "Sign in with Google", "text=Sign in with Google"),
+        ],
+    )
+    assert login_steps(_facts(page), "u", "p")["steps"][3]["selector"] == "text=로그인"
+
+
+def test_login_steps_none_when_only_social_submit():
+    page = PageFacts(
+        "/login",
+        False,
+        "f",
+        [
+            Element("input", "email", "input[name=email]"),
+            Element("input", "password", "input[name=password]"),
+            Element("button", "카카오로 로그인", "text=카카오로 로그인"),
+        ],
+    )
+    assert login_steps(_facts(page), "u", "p") is None

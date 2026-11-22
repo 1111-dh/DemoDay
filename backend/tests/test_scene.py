@@ -162,3 +162,9 @@ def test_check_rejects_long_cards(tmp_path):
     llm = FakeLLM(long, long, long)
     doc = build_scene(run_dir(tmp_path), 60, False, llm)
     assert len(llm.users) == 3 and doc["scenes"][1]["type"] == "screen"
+
+
+def test_cards_stay_short_for_title_style():  # 최종 리뷰 #3 — kicker 전까지 제목 스타일로 그려짐
+    from app.scene import MAX_CARD
+
+    assert MAX_CARD <= 28

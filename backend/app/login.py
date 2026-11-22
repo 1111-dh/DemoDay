@@ -14,11 +14,18 @@ from app.analyze.facts import PageFacts, RepoFacts
 _LOGIN_PATH = re.compile(r"(?:^|/)(?:log-?in|sign-?in)(?=$|/)", re.IGNORECASE)
 _PASSWORD = re.compile(r"password|비밀번호|비번|\bpw\b", re.IGNORECASE)
 _SUBMIT = re.compile(r"로그인|log ?in|sign ?in", re.IGNORECASE)
+_SUBMIT_EXACT = re.compile(r"^\s*(?:로그인|log ?in|sign ?in)\s*$", re.IGNORECASE)
+# 소셜 로그인 버튼 — 누르면 OAuth 페이지로 가서 로그인되지 않은 채 녹화된다
+_SOCIAL = re.compile(
+    r"카카오|kakao|구글|google|네이버|naver|apple|애플|github|facebook|페이스북"
+    r"|\bwith\b|으로|로 계속",
+    re.IGNORECASE,
+)
 
 
 def _form(page: PageFacts) -> tuple[list[Element], list[Element]]:
     inputs = [e for e in page.elements if e.kind == "input"]
-    buttons = [e for e in page.elements if e.kind == "button"]
+    buttons = [e for e in page.elements if e.kind == "button" and not _SOCIAL.search(e.text)]
     return inputs, buttons
 
 
@@ -32,7 +39,10 @@ def login_steps(facts: RepoFacts, username: str, password: str) -> dict | None:
             continue
         pw = next((e for e in inputs if _PASSWORD.search(f"{e.text} {e.selector}")), inputs[1])
         user = next(e for e in inputs if e is not pw)
-        submit = next((b for b in buttons if _SUBMIT.search(b.text)), buttons[-1])
+        submit = next(
+            (b for b in buttons if _SUBMIT_EXACT.match(b.text)),
+            next((b for b in buttons if _SUBMIT.search(b.text)), buttons[-1]),
+        )
         steps = [
             {"action": "goto", "path": page.path, "caption": "로그인"},
             {"action": "type", "selector": user.selector, "value": username, "caption": "아이디"},
