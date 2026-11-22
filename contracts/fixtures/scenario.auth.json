@@ -1,0 +1,11 @@
+{"baseUrl": "https://sample.vercel.app",
+ "auth": {"steps": [
+  {"id": 1, "action": "goto", "path": "/login", "caption": "로그인"},
+  {"id": 2, "action": "type", "selector": "input[name=email]", "value": "demo@example.com", "caption": "이메일"},
+  {"id": 3, "action": "type", "selector": "input[name=password]", "value": "demo-password", "caption": "비밀번호"},
+  {"id": 4, "action": "click", "selector": "text=로그인", "caption": "로그인"}
+ ]},
+ "steps": [
+  {"id": 1, "action": "goto", "path": "/dashboard", "caption": "로그인 후 대시보드"},
+  {"id": 2, "action": "click", "selector": "text=새 프로젝트", "caption": "새 프로젝트 만들기"}
+ ]}

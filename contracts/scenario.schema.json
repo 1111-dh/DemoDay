@@ -8,6 +8,15 @@
   "required": ["baseUrl", "steps"],
   "properties": {
     "baseUrl": { "type": "string", "format": "uri", "description": "배포 URL" },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "description": "캡처 전에 같은 브라우저 컨텍스트에서 한 번 실행하는 로그인. 스크린샷·capture.json·영상에 넣지 않는다. 사용자가 입력하며 LLM은 만들지 않는다. 예: 데모 로그인 URL goto, 또는 로그인 폼 type/click.",
+      "properties": {
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Step" } }
+      }
+    },
     "steps": {
       "type": "array",
       "minItems": 1,
