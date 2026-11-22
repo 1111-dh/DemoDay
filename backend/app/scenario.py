@@ -23,7 +23,7 @@ from app.llm import LLM, generate
 
 MAX_STEPS = 7
 MAX_PROMPT = 500
-SCENARIO_VERSION = 4  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 5  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -87,9 +87,21 @@ _LATER_STEP = re.compile(r"(?:^|/)(?:input|step|steps|wizard|stage)/(?:[2-9]|\d{
 
 
 def _demo_page(path: str, dynamic: bool) -> bool:
-    return not (
-        dynamic or _NOT_DEMO.search(path) or _STATEFUL.search(path) or _LATER_STEP.search(path)
-    )
+    return not dynamic and _shown(path)
+
+
+def _shown(path: str) -> bool:
+    """데모에 보여줄 만한 화면(로그인·약관·결과·단계형 중간 제외). 동적 여부와는 따로 본다."""
+    return not (_NOT_DEMO.search(path) or _STATEFUL.search(path) or _LATER_STEP.search(path))
+
+
+def _click_only_pages(facts: RepoFacts) -> dict[str, set[str]]:
+    """동적 경로(/items/:id) — goto 는 못 하고, 바로 앞 click 으로 들어간 뒤에만 요소를 쓴다."""
+    return {
+        p.path: {e.selector for e in p.elements if _safe(e)}
+        for p in facts.pages
+        if p.dynamic and p.elements and _shown(p.path)
+    }
 
 
 def _static_pages(facts: RepoFacts) -> dict[str, set[str]]:
@@ -108,6 +120,7 @@ def _caption_for(path: str) -> str:
 
 def _ground(draft: ScenarioDraft, facts: RepoFacts) -> tuple[list[dict], list[str]]:
     pages = _static_pages(facts)
+    click_only = _click_only_pages(facts)
     steps: list[dict] = []
     dropped: list[str] = []
     current: str | None = None
@@ -122,10 +135,15 @@ def _ground(draft: ScenarioDraft, facts: RepoFacts) -> tuple[list[dict], list[st
                 {"action": "goto", "path": s.path, "caption": caption or _caption_for(s.path)}
             )
             continue
+        if s.path in click_only and s.path != current:  # 동적 화면 — 앞 단계 click 으로만 들어간다
+            if not steps or steps[-1]["action"] != "click":
+                dropped.append(f"{s.action} {s.selector!r}: 동적 화면 {s.path}는 앞 click 뒤에만")
+                continue
+            current = s.path
         if current is None:
             current = "/" if "/" in pages else next(iter(pages), "/")
             steps.append({"action": "goto", "path": current, "caption": _caption_for(current)})
-        if s.selector not in pages.get(current, set()):
+        if s.selector not in pages.get(current, click_only.get(current, set())):
             dropped.append(f"{s.action} {s.selector!r}: 페이지 {current}의 elements에 없음")
             continue
         if s.action == "type":
@@ -169,6 +187,7 @@ def _user_message(facts: RepoFacts, prompt: str | None = None) -> str:
         {**p, "elements": [e for e in p["elements"] if _safe(e)]}
         for p in data["pages"]
         if _demo_page(p["path"], p["dynamic"])
+        or (p["dynamic"] and p["elements"] and _shown(p["path"]))
     ]
     user = "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, indent=2)
     return with_reference(user, prompt, "화면 순서와 보여줄 기능에만 반영한다")

@@ -177,3 +177,20 @@ def test_summary_keeps_snake_case_and_math():
 
     _, summary = _name_and_summary("# A\n\nuse snake_case_names and 2*3*4 math\n", "x")
     assert summary == "use snake_case_names and 2*3*4 math"
+
+
+def test_dynamic_route_pages_get_elements():  # 클릭으로 들어가는 동적 화면도 요소를 뽑는다
+    snap = make_snap(
+        {
+            "package.json": pkg({"react": "19", "react-router-dom": "7"}),
+            "src/App.tsx": (
+                'import Home from "./pages/Home";\nimport Item from "./pages/Item";\n'
+                '<Routes><Route path="/" element={<Home />} />'
+                '<Route path="/items/:id" element={<Item />} /></Routes>'
+            ),
+            "src/pages/Home.tsx": '<a href="/items/1">첫 상품</a>',
+            "src/pages/Item.tsx": "<button>장바구니 담기</button>",
+        }
+    )
+    page = next(p for p in build_facts(snap).pages if p.path == "/items/:id")
+    assert page.dynamic and [e.text for e in page.elements] == ["장바구니 담기"]
