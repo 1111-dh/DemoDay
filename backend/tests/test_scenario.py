@@ -328,3 +328,90 @@ def test_later_wizard_steps_are_not_demo_targets():  # 안정형 /#/input/2·3 �
         assert not _demo_page(p, False), p
     for p in ["/#/input/1", "/step/1", "/posts/2024-review", "/v2/home"]:
         assert _demo_page(p, False), p
+
+
+def _dyn_facts():
+    return facts(
+        pages=[
+            PageFacts(
+                "/workspaces",
+                False,
+                "w.tsx",
+                [Element("link", "우리 팀", '[aria-label="우리 팀"]')],
+            ),
+            PageFacts(
+                "/workspaces/:workspaceId/dashboard",
+                True,
+                "d.tsx",
+                [
+                    Element("link", "회의록", "text=회의록"),
+                    Element("button", "업로드", "text=업로드"),
+                ],
+            ),
+        ]
+    )
+
+
+def test_click_into_dynamic_page():  # managers-manager 핵심 화면은 모두 /workspaces/:id/...
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/workspaces"),
+            step("click", selector='[aria-label="우리 팀"]'),
+            step("click", path="/workspaces/:workspaceId/dashboard", selector="text=회의록"),
+            step("click", path="/workspaces/:workspaceId/dashboard", selector="text=업로드"),
+        ]
+    )
+    steps = ground(draft, _dyn_facts())
+    assert [s.get("selector") for s in steps] == [
+        None,
+        '[aria-label="우리 팀"]',
+        "text=회의록",
+        "text=업로드",
+    ]
+    assert all("path" not in s for s in steps if s["action"] == "click")  # 계약: click 엔 path 없음
+
+
+def test_dynamic_page_needs_a_click_first():
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/workspaces"),
+            step("click", path="/workspaces/:workspaceId/dashboard", selector="text=회의록"),
+        ]
+    )
+    assert [s["action"] for s in ground(draft, _dyn_facts())] == ["goto"]
+
+
+def test_dynamic_page_cannot_be_goto_and_unknown_selector_dropped():
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/workspaces"),
+            step("goto", path="/workspaces/:workspaceId/dashboard"),
+            step("click", selector='[aria-label="우리 팀"]'),
+            step("click", path="/workspaces/:workspaceId/dashboard", selector="text=없는거"),
+        ]
+    )
+    assert [s.get("path") or s.get("selector") for s in ground(draft, _dyn_facts())] == [
+        "/workspaces",
+        '[aria-label="우리 팀"]',
+    ]
+
+
+def test_dynamic_pages_shown_to_llm_as_click_only():
+    llm = FakeLLM(None, None, None)
+    build_scenario(_dyn_facts(), BASE, llm)
+    assert "/workspaces/:workspaceId/dashboard" in llm.users[0] and "text=회의록" in llm.users[0]
+
+
+def test_stay_on_dynamic_page_after_type():
+    f = _dyn_facts()
+    f.pages[1].elements.append(Element("input", "제목", 'input[name="title"]'))
+    dyn = "/workspaces/:workspaceId/dashboard"
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/workspaces"),
+            step("click", selector='[aria-label="우리 팀"]'),
+            step("type", path=dyn, selector='input[name="title"]', value="주간 회의"),
+            step("click", path=dyn, selector="text=업로드"),
+        ]
+    )
+    assert [s["action"] for s in ground(draft, f)] == ["goto", "click", "type", "click"]

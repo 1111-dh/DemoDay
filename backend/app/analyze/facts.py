@@ -225,9 +225,10 @@ def page_elements(
 def _elements(
     snap: RepoSnapshot, route: Route, root: AppRoot, pages: frozenset[str]
 ) -> list[Element]:
-    """동적 경로는 goto 할 수 없으니 요소를 뽑지 않는다. Flutter 는 Dart 위젯에서 role 셀렉터."""
-    if route.dynamic:
-        return []
+    """페이지 요소. 동적 경로도 뽑는다 — goto 는 못 해도 앞 화면에서 클릭으로 들어갈 수 있다.
+
+    Flutter 는 Dart 위젯에서 role 셀렉터.
+    """
     if root.framework == "flutter":
         from app.analyze.flutter import flutter_page_elements
 
