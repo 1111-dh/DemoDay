@@ -11,8 +11,9 @@ if (!runDir || !out) {
 }
 const root = fileURLToPath(new URL("..", import.meta.url));
 execFileSync("node", ["scripts/use-run.mjs", resolve(runDir)], { cwd: root, stdio: "inherit" });
+// pnpm 대신 node로 CLI를 직접 실행한다(Windows에서 pnpm은 .cmd라 execFileSync로 못 띄운다)
 execFileSync(
-  "pnpm",
-  ["exec", "remotion", "render", "src/index.ts", "Demo", resolve(out), `--props=${resolve(runDir, "scene.json")}`, ...rest],
+  process.execPath,
+  ["node_modules/@remotion/cli/remotion-cli.js", "render", "src/index.ts", "Demo", resolve(out), `--props=${resolve(runDir, "scene.json")}`, ...rest],
   { cwd: root, stdio: "inherit" },
 );
