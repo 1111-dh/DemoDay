@@ -42,6 +42,8 @@ const Bgm: React.FC<{ total: number }> = ({ total }) => {
     <Audio
       src={file.src}
       loop
+      // 반복돼도 volume 콜백의 프레임이 0으로 돌아가지 않게(기본값 repeat이면 끝 페이드아웃이 안 됨)
+      loopVolumeCurveBehavior="extend"
       volume={(f) => interpolate(f, [0, fps, fadeOut, total], [0, 0.18, 0.18, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })}
     />
   );
