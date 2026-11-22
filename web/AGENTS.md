@@ -18,3 +18,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 백엔드가 준비되기 전에는 `@demoday/contracts/fixtures/scene.json`을 import해서 UI를 개발한다.
 - 수정 결과는 scene.json 전체를 백엔드에 보내 다시 렌더한다. 보내기 전에 장면 길이가 0보다 큰지, 자막 길이가 적당한지 클라이언트에서 확인한다.
 - 시연용이므로 로딩·실패 상태 UI가 반드시 있어야 한다(렌더는 수십 초 걸림).
+
+## 영상 품질 C안 (설계: docs/superpowers/specs/2026-11-22-video-quality-design.md)
+- 입력 화면에 선택 항목 추가: **테스트 계정 아이디·비밀번호**(`type=password`) → `POST /api/runs`의 `login: {username, password}`, **"영상에 바라는 점"** 프롬프트(500자) → `prompt`. 응답에 돌아오는 로그인 값은 `***`.
+- 고급 옵션: 로그인 URL 직접 입력(소셜 로그인만 있는 앱용) → `auth: {steps: [{id: 1, action: "goto", path: "<URL 경로>", caption: "로그인"}]}`. `login`과 동시에 보내지 않는다(422).
+- `login`인데 로그인 폼을 못 찾으면 400 `{detail}` — 메시지를 보여주고 고급 옵션으로 안내한다.
+- 미리보기·수정 화면은 scene의 `video`·`highlight`·`kicker`(계약 합의 후 생김)를 지우지 않고 그대로 보낸다.
+- 아키텍처 장면이 노드 2개 미만이면 보기 흉하다 — 빼거나 서비스 흐름 표로 바꾸는 것은 C가 판단.
