@@ -43,6 +43,8 @@ def test_login_steps_from_form():
                 "selector": 'button:text-is("로그인")',
                 "caption": "로그인",
             },
+            {"id": 5, "action": "wait", "caption": "로그인 대기"},  # 로그인 요청이 끝날 때까지
+            {"id": 6, "action": "wait", "caption": "로그인 대기"},
         ]
     }
     probe = {"baseUrl": "https://x.dev", "auth": auth, "steps": [auth["steps"][0]]}

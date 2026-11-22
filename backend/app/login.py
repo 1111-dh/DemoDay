@@ -11,6 +11,8 @@ import re
 from app.analyze.elements import Element
 from app.analyze.facts import PageFacts, RepoFacts
 
+LOGIN_WAIT_STEPS = 2  # 캡처의 wait 1회 = 1초
+
 _LOGIN_PATH = re.compile(r"(?:^|/)(?:log-?in|sign-?in)(?=$|/)", re.IGNORECASE)
 _PASSWORD = re.compile(r"password|비밀번호|비번|\bpw\b", re.IGNORECASE)
 _SUBMIT = re.compile(r"로그인|log ?in|sign ?in", re.IGNORECASE)
@@ -63,6 +65,8 @@ def login_steps(facts: RepoFacts, username: str, password: str) -> dict | None:
             {"action": "type", "selector": user.selector, "value": username, "caption": "아이디"},
             {"action": "type", "selector": pw.selector, "value": password, "caption": "비밀번호"},
             {"action": "click", "selector": _button_selector(submit), "caption": "로그인"},
+            # 클릭 직후 다음 goto 가 진행 중인 로그인 요청을 끊는다(ERR_ABORTED) — 응답을 기다린다
+            *[{"action": "wait", "caption": "로그인 대기"}] * LOGIN_WAIT_STEPS,
         ]
         return {"steps": [{"id": i, **s} for i, s in enumerate(steps, start=1)]}
     return None
