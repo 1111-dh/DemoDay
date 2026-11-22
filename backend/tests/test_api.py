@@ -313,3 +313,17 @@ def test_files_endpoint_never_serves_secrets(client):  # 최종 리뷰 #1
     (runs.run_dir(rid) / "prompt.txt").write_text("p")
     for name in ["scenario.json", "facts.json", "status.json", "prompt.txt"]:
         assert client.get(f"/api/runs/{rid}/files/{name}").status_code == 404, name
+
+
+def test_capture_warning_includes_detail_line(client, monkeypatch):
+    def boom(run_dir):
+        raise RuntimeError(
+            "캡처 실패:\n! step 1 (goto) fallback\n"
+            "✗ page.screenshot: Timeout 5000ms exceeded.\nCall log:"
+        )
+
+    monkeypatch.setattr(pipeline, "run_capture", boom)
+    rid = create(client)["id"]
+    client.post(f"/api/runs/{rid}/build", json={})
+    warning = client.get(f"/api/runs/{rid}").json()["warning"]
+    assert warning.startswith("캡처 실패: page.screenshot: Timeout 5000ms exceeded.")
