@@ -51,8 +51,11 @@ studio: ## Remotion Studio (fixture scene.json 으로 장면 미리보기)
 e2e: ## 전체 파이프라인. REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>]
 	scripts/e2e.sh "$(REPO)" "$(URL)" "$(or $(SEC),60)" "$(AUTH)"
 
+warm: ## 시연 레포 분석 캐시 채우기 (backend/samples.json, FILE=로 변경). 시연 전에 한 번
+	cd backend && uv run python -m app.cli warm $(if $(FILE),--file $(abspath $(FILE)))
+
 e2e-render: ## fixture scene.json → runs/fixture/preview.mp4 (렌더만)
 	rm -rf runs/fixture && mkdir -p runs && cp -R contracts/fixtures runs/fixture
 	pnpm --filter @demoday/render render $(CURDIR)/runs/fixture $(CURDIR)/runs/fixture/preview.mp4 --scale=0.5
 
-.PHONY: help setup gen validate gen-check lint typecheck test check dev-api dev-web studio e2e e2e-render
+.PHONY: help setup gen validate gen-check lint typecheck test check dev-api dev-web studio e2e warm e2e-render
