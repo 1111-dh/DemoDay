@@ -334,7 +334,7 @@ def test_flutter_go_router_hash_urls_by_default():
     ]
     facts = build_facts(snap)
     assert "go_router" in facts.stack and "flutter" not in facts.stack
-    assert all(p.elements == [] for p in facts.pages)  # canvas 렌더 — 셀렉터 없음
+    assert all(p.elements == [] for p in facts.pages)  # 화면 파일이 없으면 요소도 없다
 
 
 def test_flutter_path_url_strategy():
@@ -372,3 +372,124 @@ def test_nuxt_auto_imported_components():
     snap = make_snap(files, loader=files.get)
     home = build_facts(snap).pages[0]
     assert [e.selector for e in home.elements] == ["text=재생", "text=더 보기", "text=로고"]
+
+
+# ── 3-b. Flutter 요소 (semantics 모드에서 role 로 클릭) ─────────────────
+
+
+def test_dart_elements():
+    from app.analyze.flutter import dart_elements
+
+    src = """
+    Column(children: [
+      ElevatedButton(onPressed: () => go(), child: const Text('다음')),
+      TextButton.icon(onPressed: skip, icon: Icon(Icons.skip), label: const Text("건너뛰기")),
+      IconButton(tooltip: '뒤로', icon: const Icon(Icons.arrow_back), onPressed: back),
+      PrimaryButton(label: '시작하기', onTap: start),
+      _SocialButton(label: '카카오로 계속하기', icon: Image.asset(a), onPressed: k),
+      ElevatedButton(onPressed: ok, child: Text(l10n.ok)),
+      TextField(decoration: InputDecoration(labelText: '이메일', hintText: 'a@b.c')),
+      TextFormField(decoration: const InputDecoration(hintText: '비밀번호')),
+      const Text('그냥 텍스트'),
+    ])
+    """
+    assert [(e.kind, e.selector) for e in dart_elements(src)] == [
+        ("button", 'role=button[name="다음"]'),
+        ("button", 'role=button[name="건너뛰기"]'),
+        ("button", 'role=button[name="뒤로"]'),
+        ("button", 'role=button[name="시작하기"]'),
+        ("button", 'role=button[name="카카오로 계속하기"]'),
+        ("input", 'role=textbox[name="이메일"]'),
+        ("input", 'role=textbox[name="비밀번호"]'),
+    ]
+
+
+def test_flutter_routes_link_screen_files_and_elements():
+    pubspec = PUBSPEC.replace("name: safe_app", "name: safe_app")
+    files = {
+        "frontend/pubspec.yaml": pubspec,
+        "frontend/lib/main.dart": "void main() { usePathUrlStrategy(); runApp(App()); }",
+        "frontend/lib/router/app_router.dart": """
+          import 'package:go_router/go_router.dart';
+          import 'package:safe_app/screens/home/home_screen.dart';
+          import '../screens/login/login_screen.dart';
+          final r = GoRouter(routes: [
+            GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+            GoRoute(path: '/login', pageBuilder: (c, s) {
+              return NoTransitionPage(child: LoginScreen());
+            }),
+          ]);
+        """,
+        "frontend/lib/screens/home/home_screen.dart": """
+          import 'package:flutter/material.dart';
+          import '../../widgets/menu_card.dart';
+          import '../../providers/user_provider.dart';
+          class HomeScreen extends StatelessWidget {
+            Widget build(BuildContext context) => ElevatedButton(onPressed: f, child: Text('시작'));
+          }
+        """,
+        "frontend/lib/widgets/menu_card.dart": "FilledButton(onPressed: f, child: Text('메뉴'))",
+        "frontend/lib/providers/user_provider.dart": "TextButton(child: Text('따라가면 안 됨'))",
+        "frontend/lib/screens/login/login_screen.dart": "class LoginScreen {}",
+    }
+    snap = make_snap(
+        {k: files[k] for k in ("frontend/pubspec.yaml", "frontend/lib/router/app_router.dart")},
+        extra_paths=list(files),
+        loader=files.get,
+    )
+    home = build_facts(snap).pages[0]
+    assert (home.path, home.file) == ("/", "frontend/lib/screens/home/home_screen.dart")
+    assert [e.selector for e in home.elements] == [
+        'role=button[name="시작"]',
+        'role=button[name="메뉴"]',
+    ]
+    login = routes_for(snap, find_app_root(snap))[1]
+    assert (login.path, login.file) == ("/login", "frontend/lib/screens/login/login_screen.dart")
+
+
+def test_flutter_does_not_follow_other_screens_and_skips_numeric_names():
+    files = {
+        "pubspec.yaml": PUBSPEC,
+        "lib/main.dart": "void main() { usePathUrlStrategy(); }",
+        "lib/router.dart": """
+          import 'screens/a_screen.dart';
+          import 'screens/b_screen.dart';
+          final r = GoRouter(routes: [
+            GoRoute(path: '/', builder: (c, s) => const AScreen()),
+            GoRoute(path: '/b', builder: (c, s) => const BScreen()),
+          ]);
+        """,
+        "lib/screens/a_screen.dart": """
+          import 'b_screen.dart';
+          class AScreen { build() => Column(children: [
+            ElevatedButton(onPressed: () => push(BScreen()), child: Text('B로 가기')),
+            TextField(decoration: InputDecoration(hintText: '0')),
+          ]); }
+        """,
+        "lib/screens/b_screen.dart": "class BScreen { x() => TextButton(child: Text('B 버튼')); }",
+    }
+    snap = make_snap(
+        {k: files[k] for k in ("pubspec.yaml", "lib/router.dart")},
+        extra_paths=list(files),
+        loader=files.get,
+    )
+    a = build_facts(snap).pages[0]
+    assert [e.selector for e in a.elements] == ['role=button[name="B로 가기"]']
+
+
+def test_react_page_does_not_follow_other_route_pages():
+    files = {
+        "package.json": pkg({"react": "19"}),
+        "src/App.tsx": """
+          import Home from './pages/Home'
+          import About from './pages/About'
+          export default () => (<Routes>
+            <Route path="/" element={<Home />} /><Route path="/about" element={<About />} />
+          </Routes>)
+        """,
+        "src/pages/Home.tsx": "import About from './About'\n<button>홈 버튼</button>",
+        "src/pages/About.tsx": "<button>소개 버튼</button>",
+    }
+    snap = make_snap(files, loader=files.get)
+    home = build_facts(snap).pages[0]
+    assert [e.selector for e in home.elements] == ["text=홈 버튼"]

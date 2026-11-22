@@ -8,3 +8,4 @@
 - 종료 코드: 0이면 capture.json 생성(fallback 포함), 0이 아니면 생성 실패.
 - 개발 중에는 `contracts/fixtures/scenario.json`이나 직접 쓴 scenario로 실제 배포 URL에 돌려 본다. 결과는 `make validate FILES=<runDir>/capture.json`으로 확인한다.
 - 로그인이 필요한 페이지는 MVP에서 제외한다. 입력값은 캡처 화면에서 마스킹 처리한다.
+- **Flutter web**(`flutter-view`·`flt-glass-pane` 요소가 있는 페이지)은 canvas라 그대로는 셀렉터가 없다. 페이지를 연 뒤 `document.querySelector('flt-semantics-placeholder')?.click()`으로 semantics를 켜면 `role=button[name="…"]`·`role=textbox[name="…"]` 셀렉터가 동작한다(A의 scenario가 이 형식을 쓴다). 해시 URL(`/#/x`)도 그대로 `baseUrl + path`로 연다.

@@ -140,10 +140,13 @@ def _next_specs(src: str, wanted: set[str] | None) -> list[tuple[str, set[str] |
     return picked
 
 
-def page_elements(snap: RepoSnapshot, route: Route, root: AppRoot) -> list[Element]:
+def page_elements(
+    snap: RepoSnapshot, route: Route, root: AppRoot, others: frozenset[str] = frozenset()
+) -> list[Element]:
     """페이지 파일의 요소 + 그 파일이 import 하는 컴포넌트의 요소 (BFS, 등장 순서).
 
     컴포넌트를 못 찾은 라우트(file=라우터 파일)는 따라가지 않는다 — 모든 페이지가 섞인다.
+    others(다른 라우트의 페이지 파일)도 따라가지 않는다 — 이동하려고 import 한 다른 화면이다.
     """
     known = set(snap.paths) | set(snap.files)
     # (파일, 깊이, 이 파일에서 필요한 export 이름 | None=전부)
@@ -163,19 +166,27 @@ def page_elements(snap: RepoSnapshot, route: Route, root: AppRoot) -> list[Eleme
             continue
         for spec, names in _next_specs(src, wanted):
             target = resolve(spec, file, known, root.dir)
-            if target and target not in seen and not _NOT_UI.search(spec):
+            if target and target not in seen | others and not _NOT_UI.search(spec):
                 seen.add(target)
                 queue.append((target, depth + 1, names))
         for target in _auto_components(src, registry):
-            if target not in seen:
+            if target not in seen | others:
                 seen.add(target)
                 queue.append((target, depth + 1, None))
     return out[:MAX_ELEMENTS]
 
 
-def _has_dom(route: Route, root: AppRoot) -> bool:
-    """요소를 뽑을 가치가 있는 페이지 — 동적 경로(goto 불가)와 Flutter(canvas)는 제외."""
-    return not route.dynamic and root.framework != "flutter"
+def _elements(
+    snap: RepoSnapshot, route: Route, root: AppRoot, pages: frozenset[str]
+) -> list[Element]:
+    """동적 경로는 goto 할 수 없으니 요소를 뽑지 않는다. Flutter 는 Dart 위젯에서 role 셀렉터."""
+    if route.dynamic:
+        return []
+    if root.framework == "flutter":
+        from app.analyze.flutter import flutter_page_elements
+
+        return flutter_page_elements(snap, route, root, pages - {route.file})
+    return page_elements(snap, route, root, pages - {route.file})
 
 
 def build_facts(snap: RepoSnapshot) -> RepoFacts:
@@ -183,12 +194,9 @@ def build_facts(snap: RepoSnapshot) -> RepoFacts:
     root = find_app_root(snap)
     if root is None:
         return RepoFacts(name, summary, [], None, None, [])
-    pages = [
-        PageFacts(
-            r.path, r.dynamic, r.file, page_elements(snap, r, root) if _has_dom(r, root) else []
-        )
-        for r in routes_for(snap, root)
-    ]
+    routes = routes_for(snap, root)
+    files = frozenset(r.file for r in routes if r.resolved)
+    pages = [PageFacts(r.path, r.dynamic, r.file, _elements(snap, r, root, files)) for r in routes]
     snap.save()  # 분석 중 더 받은 컴포넌트 파일까지 캐시
     stack = sorted(_deps(root.package))
     return RepoFacts(name, summary, stack, root.dir, root.framework, pages)

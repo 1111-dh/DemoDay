@@ -123,7 +123,9 @@ def find_app_root(snap: RepoSnapshot) -> AppRoot | None:
         if name == "pubspec.yaml":
             if (deps := pubspec_deps(text)) is not None:
                 size = sum(1 for p in paths_in(snap, base) if p.endswith(".dart"))
-                candidates.append((0, size, AppRoot(base, "flutter", {"dependencies": deps})))
+                m = re.search(r"^name:\s*([\w-]+)", text, re.MULTILINE)
+                package = {"name": m.group(1) if m else "", "dependencies": deps}
+                candidates.append((0, size, AppRoot(base, "flutter", package)))
             continue
         if name != "package.json":
             continue

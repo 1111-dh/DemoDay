@@ -5,9 +5,9 @@
 - 단계 함수 시그니처는 `app/cli.py`의 `analyze(repo, url, out)`, `scene(run, total_sec)`. 바꾸면 `scripts/e2e.sh`도 같이 고친다.
 - 분석 범위(라우트 + UI 요소 + README + package.json/pubspec.yaml), 공개 레포만:
   - 클릭·입력까지: React Router(`lazy` import 포함) · Next.js `pages`/`app` · Vue Router · Nuxt `pages/` · SvelteKit `src/routes/`
-  - 페이지 이동만: Flutter web(go_router · `MaterialApp.routes`) — canvas 렌더라 셀렉터가 없다
+  - Flutter web(go_router · `MaterialApp.routes`): canvas 렌더라 semantics 노드의 role 셀렉터(`role=button[name="다음"]`, `role=textbox[name="이메일"]`)를 만든다. 리터럴 문구의 `…Button` 위젯·`TextField`만. 캡처가 semantics를 켜야 클릭된다(capture/AGENTS.md)
   - 그 외(Angular·백엔드 전용 등)는 `/` 1단계 기본값
-  - UI 요소는 페이지 파일에서 import(재export 묶음은 가져온 이름만)·Nuxt 자동 import 컴포넌트를 따라가며 리터럴 문구만 모은다. `…Button`·`…Link`·`…Field` 디자인 시스템 컴포넌트와 react-hook-form `register('x')`도 인식. Flutter는 `usePathUrlStrategy`가 없으면 `/#/x` 해시 URL.
+  - UI 요소는 페이지 파일에서 import(재export 묶음은 가져온 이름만)·Nuxt 자동 import 컴포넌트를 따라가며 리터럴 문구만 모은다. `…Button`·`…Link`·`…Field` 디자인 시스템 컴포넌트와 react-hook-form `register('x')`도 인식. 다른 라우트의 화면 파일은 따라가지 않는다. Flutter는 `usePathUrlStrategy`가 없으면 `/#/x` 해시 URL.
 - 캡처·렌더는 subprocess로 호출한다: `pnpm --filter @demoday/capture capture <scenario> <runDir>`, `pnpm --filter @demoday/render render <runDir> <out.mp4>`.
 
 ## LLM 출력 규칙
