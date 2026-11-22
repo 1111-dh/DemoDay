@@ -62,6 +62,16 @@ def run_render(run_dir: Path) -> None:
 EMPTY_CAPTURE = {"viewport": {"w": 1280, "h": 720}, "shots": []}
 
 
+def _summary(e: Exception) -> str:
+    """'캡처 실패:' + 캡처 로그의 ✗ 줄(없으면 마지막 줄) 한 줄."""
+    lines = [ln.strip() for ln in str(e).splitlines() if ln.strip()]
+    if not lines:
+        return type(e).__name__
+    head, rest = lines[0], lines[1:]
+    detail = next((ln for ln in rest if ln.startswith("✗")), rest[-1] if rest else "")
+    return f"{head} {detail.removeprefix('✗').strip()}".strip()[:200]
+
+
 def _capture_or_empty(rid: str, d: Path) -> None:
     """캡처가 통째로 실패해도(사이트 응답 없음 등) 영상은 나오게 — 카드·아키텍처로만."""
     try:
@@ -69,7 +79,7 @@ def _capture_or_empty(rid: str, d: Path) -> None:
     except Exception as e:
         log.warning("캡처 실패 %s — 화면 없이 계속: %s", rid, e)
         runs.write_json(d / "capture.json", EMPTY_CAPTURE)
-        msg = str(e).splitlines()[0] if str(e) else type(e).__name__
+        msg = _summary(e)
         hint = "실제 화면 없이 만들었어요. 사이트가 열리는지 확인하세요."
         runs.write_status(rid, warning=f"{msg} — {hint}")
 
