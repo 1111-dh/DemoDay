@@ -15,16 +15,21 @@ from app.analyze.jsx import tag_end
 Kind = Literal["button", "link", "input"]
 MAX_TEXT = 30
 
-_OPEN = re.compile(r"<(button|Link|a|input|router-link|RouterLink|NuxtLink)\b")
+# 네이티브 태그 + Vue/Nuxt 링크 + 디자인 시스템 컴포넌트(…Button · …Link · …Input/…Field)
+_OPEN = re.compile(
+    r"<(button|a|input|textarea|router-link"
+    r"|[A-Z]\w*(?:Button|Link|Input|Field|Textarea)|Button|Link|Input)(?=[\s/>])"
+)
 _TAG = re.compile(r"<[^>]+>")
-_KIND: dict[str, Kind] = {
-    "button": "button",
-    "Link": "link",
-    "a": "link",
-    "router-link": "link",
-    "RouterLink": "link",
-    "NuxtLink": "link",
-}
+_REGISTER = re.compile(r"""\bregister\(\s*["']([\w.-]+)["']""")  # react-hook-form → name
+
+
+def _kind(tag: str) -> Kind:
+    if tag in ("input", "textarea") or tag.endswith(("Input", "Field", "Textarea")):
+        return "input"
+    if tag in ("a", "router-link") or tag.endswith("Link"):
+        return "link"
+    return "button"
 
 
 @dataclass
@@ -57,7 +62,8 @@ def _clickable(kind: Kind, attrs: str, inner: str) -> Element | None:
 
 
 def _input(attrs: str) -> Element | None:
-    if (name := _attr(attrs, "name")) and re.fullmatch(r"[\w.-]+", name):
+    name = _attr(attrs, "name") or ((m := _REGISTER.search(attrs)) and m.group(1))
+    if name and re.fullmatch(r"[\w.-]+", name):
         return Element("input", name, f"input[name={name}]")
     if (ph := _attr(attrs, "placeholder")) and len(ph) <= MAX_TEXT:
         return Element("input", ph, f'input[placeholder="{ph}"]')
@@ -72,7 +78,8 @@ def extract_elements(source: str, limit: int = 15) -> list[Element]:
         tag = m.group(1)
         end, self_closing = tag_end(source, m.end())
         attrs = source[m.end() : end - (2 if self_closing else 1)]
-        if tag == "input":
+        kind = _kind(tag)
+        if kind == "input":
             el = _input(attrs)
         elif self_closing:
             continue
@@ -80,7 +87,7 @@ def extract_elements(source: str, limit: int = 15) -> list[Element]:
             close = source.find(f"</{tag}>", end)
             if close < 0:
                 continue
-            el = _clickable(_KIND[tag], attrs, source[end:close])
+            el = _clickable(kind, attrs, source[end:close])
         if el:
             found.append((m.start(), el))
 

@@ -62,3 +62,24 @@ def test_html_entities_decoded():
     assert [e.selector for e in extract_elements("<button>&nbsp;Edit&amp;Save</button>")] == [
         "text=Edit&Save"
     ]
+
+
+def test_design_system_components():
+    src = """
+    <form>
+      <TextField label="이메일" {...register('email')} />
+      <PasswordField label="비밀번호" {...register("password")} />
+      <SearchInput placeholder="찾기" />
+      <Button type="submit" disabled={isSubmitting}>로그인</Button>
+      <GuardedLink to={paths.signup()}>회원가입</GuardedLink>
+      <FormErrorPanel message={m} />
+      <ButtonGroup><span>무시</span></ButtonGroup>
+    </form>
+    """
+    assert [(e.kind, e.selector) for e in extract_elements(src)] == [
+        ("input", "input[name=email]"),
+        ("input", "input[name=password]"),
+        ("input", 'input[placeholder="찾기"]'),
+        ("button", "text=로그인"),
+        ("link", "text=회원가입"),
+    ]

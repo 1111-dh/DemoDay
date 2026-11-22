@@ -23,6 +23,7 @@ _ROUTER_HINT = re.compile(
 _PATH_KEY = re.compile(r"""path\s*:\s*(["'`])([^"'`]*)\1""")
 _DYN_IMPORT = re.compile(r"""import\(\s*["']([^"']+)["']""")
 _OBJ_COMP = re.compile(r"(?:\belement\s*:\s*<\s*(\w+))|(?:\b[Cc]omponent\s*:\s*(\w+))")
+_TAG_NAME = re.compile(r"<\s*([A-Z]\w*)")
 _JSX_COMP = (
     re.compile(r"\belement\s*=\s*\{\s*<\s*(\w+)"),
     re.compile(r"\bComponent\s*=\s*\{\s*(\w+)"),
@@ -54,7 +55,7 @@ def _skip_string(src: str, i: int) -> int:
 
 
 def object_routes(src: str) -> list[tuple[str, str, bool]]:
-    """`{ path: 'x', …, children: [{ … }] }` 중첩 → (전체 경로, 객체 자기 부분 텍스트, index).
+    """`{ path: 'x', …, children: [{ … }] }` 중첩 → (전체 경로, 자기 부분 텍스트, 레이아웃?).
 
     문자열·주석 안의 중괄호는 무시한다. 자기 부분 = `children` 앞까지.
     """
@@ -83,25 +84,26 @@ def object_routes(src: str) -> list[tuple[str, str, bool]]:
             stack.append([i, None])
         elif c == "}" and stack:
             start, path = stack.pop()
-            own = src[start : i + 1].split("children", 1)[0]
+            text = src[start : i + 1]
+            own, *children = text.split("children", 1)
             is_index = bool(re.search(r"\bindex\s*:\s*true", own))
             if path is not None or is_index:
                 parents = [p for _, p in stack]
                 full = join_paths([*parents, path]) if path is not None else join_paths(parents)
-                out.append((full, own, is_index))
+                out.append((full, own, bool(children)))
         i += 1
     return out
 
 
-def jsx_routes(src: str) -> list[tuple[str, str]]:
-    """중첩 <Route> → (전체 경로, 태그 텍스트).
+def jsx_routes(src: str) -> list[tuple[str, str, bool]]:
+    """중첩 <Route> → (전체 경로, 태그 텍스트, 레이아웃 여부 = 자식 Route 를 감싸는 태그).
 
     path 없는 레이아웃 Route는 경로에 끼지 않고, index Route는 부모 경로가 된다.
     """
     events = [(m.start(), m.end()) for m in _ROUTE_TAG.finditer(src)]
     events += [(m.start(), -1) for m in _ROUTE_CLOSE.finditer(src)]
     stack: list[str | None] = []
-    hits: list[tuple[str, str]] = []
+    hits: list[tuple[str, str, bool]] = []
     for _, after in sorted(events):
         if after < 0:
             if stack:
@@ -112,9 +114,9 @@ def jsx_routes(src: str) -> list[tuple[str, str]]:
         p = re.search(r"""\bpath\s*=\s*["']([^"']*)["']""", tag)
         raw = p.group(1).strip() if p else None
         if raw is not None:
-            hits.append((join_paths([*stack, raw]), tag))
+            hits.append((join_paths([*stack, raw]), tag, not self_closing))
         elif re.search(r"\bindex\b", tag):
-            hits.append((join_paths(stack), tag))
+            hits.append((join_paths(stack), tag, False))
         if not self_closing:
             stack.append(raw)
     return hits
@@ -125,8 +127,10 @@ def _target(
 ) -> str | None:
     if m := _DYN_IMPORT.search(text):
         return resolve(m.group(1), file, known, root.dir)
-    for pat in patterns:
-        if (m := pat.search(text)) and (name := next(g for g in m.groups() if g)) in imports:
+    names = [g for pat in patterns for m in pat.finditer(text) for g in m.groups() if g]
+    names += _TAG_NAME.findall(text)  # <Suspense><Team /></Suspense> → Team
+    for name in names:
+        if name in imports:
             return resolve(imports[name], file, known, root.dir)
     return None
 
@@ -134,24 +138,30 @@ def _target(
 def code_routes(snap: RepoSnapshot, root: AppRoot) -> list[Route]:
     known = set(snap.paths) | set(snap.files)
     routes: dict[str, Route] = {}
+    layouts: set[str] = set()
     for file, src in snap.files.items():
         if not file.endswith(_JS) or (root.dir and not file.startswith(root.dir + "/")):
             continue
         imports = import_map(src)
-        found: list[tuple[str, str | None]] = []
-        for path, tag in jsx_routes(src):
-            found.append((path, _target(tag, _JSX_COMP, imports, file, known, root)))
+        found: list[tuple[str, str | None, bool]] = []
+        for path, tag, layout in jsx_routes(src):
+            found.append((path, _target(tag, _JSX_COMP, imports, file, known, root), layout))
         if _ROUTER_HINT.search(src):
-            for path, own, _ in object_routes(src):
+            for path, own, layout in object_routes(src):
                 target = _target(own, (_OBJ_COMP,), imports, file, known, root)
                 if target is None and re.search(r"\bredirect\s*:", own):
                     continue  # { path: '/old', redirect: '/' } 는 화면이 아니다
-                found.append((path, target))
-        for path, target in found:
-            if path == "/*" or path in routes:
+                found.append((path, target, layout))
+        for path, target, layout in found:
+            # 같은 경로면 실제 화면(index·leaf)이 자식을 감싸는 레이아웃보다 우선
+            if path == "/*" or (path in routes and (layout or path not in layouts)):
                 continue
             dynamic = ":" in path or "*" in path
             routes[path] = Route(path, dynamic, target or file, resolved=target is not None)
+            if layout:
+                layouts.add(path)
+            else:
+                layouts.discard(path)
     return sort_routes(list(routes.values()))
 
 

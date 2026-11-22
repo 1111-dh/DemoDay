@@ -17,9 +17,6 @@ _NAMED = re.compile(r"""import\s+(?:\w+\s*,\s*)?\{([^}]*)\}\s+from\s+["']([^"']+
 _LAZY = re.compile(
     r"""(\w+)\s*=\s*[\w.]*\(\s*(?:async\s*)?\(\s*\)\s*=>\s*import\(\s*["']([^"']+)["']"""
 )
-_SPECS = re.compile(
-    r"""(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["']([^"']+)["']""", re.MULTILINE
-)
 
 
 def is_local(spec: str) -> bool:
@@ -69,10 +66,63 @@ def import_map(src: str) -> dict[str, str]:
     return names
 
 
-def local_specs(src: str) -> list[str]:
-    """파일이 가져오거나 다시 내보내는 로컬 모듈 경로 (등장 순서, 중복 제거)."""
-    out: list[str] = []
-    for spec in _SPECS.findall(src):
-        if is_local(spec) and spec not in out:
-            out.append(spec)
+_IMPORT_CLAUSE = re.compile(r"""\bimport\s+([^;'"`]*?)\s+from\s+["']([^"']+)["']""")
+_BARE = re.compile(r"""(?:\bimport\s*\(\s*|^\s*import\s+)["']([^"']+)["']""", re.MULTILINE)
+_EXPORT_FROM = re.compile(
+    r"""\bexport\s+(type\s+)?(\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+["']([^"']+)["']"""
+)
+
+
+def _names(group: str) -> dict[str, str]:
+    """`A, B as C, type D` → {바깥 이름: 원래 이름} (type 제외)."""
+    out: dict[str, str] = {}
+    for item in group.strip("{} \n").split(","):
+        item = item.strip()
+        if not item or item.startswith("type "):
+            continue
+        orig, _, alias = item.partition(" as ")
+        out[(alias or orig).strip()] = orig.strip()
     return out
+
+
+def reexports(src: str) -> list[tuple[str, dict[str, str] | None]]:
+    """`export {A as B} from 'x'` → ('x', {B: A}), `export * from 'x'` → ('x', None)."""
+    out = []
+    for is_type, what, spec in _EXPORT_FROM.findall(src):
+        if not is_type and is_local(spec):
+            out.append((spec, None if what.startswith("*") else _names(what)))
+    return out
+
+
+def imports_by_spec(src: str) -> list[tuple[str, set[str] | None]]:
+    """로컬 모듈별로 가져오는 원래 이름들. None = 이름을 알 수 없음(default·namespace·동적)."""
+    hits: list[tuple[int, str, set[str] | None]] = []
+    for m in _IMPORT_CLAUSE.finditer(src):
+        clause, spec = m.group(1).strip(), m.group(2)
+        if clause.startswith("type ") or not is_local(spec):
+            continue
+        head = clause.split("{", 1)[0].strip().rstrip(",").strip()
+        named = re.search(r"\{([^}]*)\}", clause)
+        names = set(_names(named.group(1)).values()) if named and not head else None
+        hits.append((m.start(), spec, names))
+    for m in _BARE.finditer(src):
+        if is_local(m.group(1)):
+            hits.append((m.start(), m.group(1), None))
+    for m in _EXPORT_FROM.finditer(src):
+        if not m.group(1) and is_local(m.group(3)):
+            what = m.group(2)
+            hits.append(
+                (
+                    m.start(),
+                    m.group(3),
+                    None if what.startswith("*") else set(_names(what).values()),
+                )
+            )
+    merged: dict[str, set[str] | None] = {}
+    for _, spec, names in sorted(hits, key=lambda h: h[0]):
+        if spec in merged:
+            prev = merged[spec]
+            merged[spec] = None if prev is None or names is None else prev | names
+        else:
+            merged[spec] = names
+    return list(merged.items())

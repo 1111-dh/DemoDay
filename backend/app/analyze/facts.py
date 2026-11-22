@@ -7,7 +7,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from app.analyze.elements import Element, extract_elements
-from app.analyze.resolve import local_specs, resolve
+from app.analyze.resolve import imports_by_spec, reexports, resolve
 from app.analyze.routes import AppRoot, Route, _deps, find_app_root, routes_for
 from app.github import RepoSnapshot
 
@@ -80,17 +80,33 @@ def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
     return name, " ".join(para)[:SUMMARY_LIMIT]
 
 
+def _next_specs(src: str, wanted: set[str] | None) -> list[tuple[str, set[str] | None]]:
+    """다음에 따라갈 (모듈, 필요한 이름). 묶음(index) 파일이면 가져온 이름의 재export 만."""
+    barrel = reexports(src)
+    if wanted is None or not barrel:
+        return imports_by_spec(src)
+    picked: list[tuple[str, set[str] | None]] = []
+    for spec, mapping in barrel:
+        if mapping is None:  # export * from — 무엇이 들었는지 모르니 그대로 넘긴다
+            picked.append((spec, wanted))
+        elif hit := {orig for alias, orig in mapping.items() if alias in wanted}:
+            picked.append((spec, hit))
+    return picked
+
+
 def page_elements(snap: RepoSnapshot, route: Route, root: AppRoot) -> list[Element]:
     """페이지 파일의 요소 + 그 파일이 import 하는 컴포넌트의 요소 (BFS, 등장 순서).
 
     컴포넌트를 못 찾은 라우트(file=라우터 파일)는 따라가지 않는다 — 모든 페이지가 섞인다.
     """
     known = set(snap.paths) | set(snap.files)
-    queue, seen = [(route.file, 0)], {route.file}
+    # (파일, 깊이, 이 파일에서 필요한 export 이름 | None=전부)
+    queue: list[tuple[str, int, set[str] | None]] = [(route.file, 0, None)]
+    seen = {route.file}
     out: list[Element] = []
     selectors: set[str] = set()
     while queue and len(out) < MAX_ELEMENTS and len(seen) <= FOLLOW_FILES:
-        file, depth = queue.pop(0)
+        file, depth, wanted = queue.pop(0)
         src = snap.read(file) or ""
         for el in extract_elements(src):
             if el.selector not in selectors:
@@ -98,11 +114,11 @@ def page_elements(snap: RepoSnapshot, route: Route, root: AppRoot) -> list[Eleme
                 out.append(el)
         if not route.resolved or depth >= FOLLOW_DEPTH:
             continue
-        for spec in local_specs(src):
+        for spec, names in _next_specs(src, wanted):
             target = resolve(spec, file, known, root.dir)
             if target and target not in seen and not _NOT_UI.search(spec):
                 seen.add(target)
-                queue.append((target, depth + 1))
+                queue.append((target, depth + 1, names))
     return out[:MAX_ELEMENTS]
 
 

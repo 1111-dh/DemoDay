@@ -135,3 +135,107 @@ def test_vue_facts_reads_view_elements_on_demand():
     )
     home = build_facts(snap).pages[0]
     assert (home.path, [e.selector for e in home.elements]) == ("/", ["text=시작"])
+
+
+# ── 2. React lazy import ─────────────────────────────────────────────
+
+
+def test_react_lazy_import_resolves_component():
+    src = """
+    import { lazy } from 'react'
+    const Dash = lazy(() => import('./pages/Dash'))
+    const Team = React.lazy(async () => import('./pages/Team'))
+    export default () => (<Routes>
+      <Route path="/dash" element={<Dash />} />
+      <Route path="/team" element={<Suspense><Team /></Suspense>} />
+      <Route path="/lazy" lazy={() => import('./pages/Lazy')} />
+    </Routes>)
+    """
+    snap = make_snap(
+        {"package.json": pkg({"react": "18"}), "src/App.tsx": src},
+        extra_paths=["src/pages/Dash.tsx", "src/pages/Team.tsx", "src/pages/Lazy.tsx"],
+    )
+    assert [(p, f) for p, _, f in paths_files(snap)] == [
+        ("/dash", "src/pages/Dash.tsx"),
+        ("/lazy", "src/pages/Lazy.tsx"),
+        ("/team", "src/pages/Team.tsx"),
+    ]
+
+
+# kyungpook-3 처럼: 감싼 lazy + element={screen(page)} + FSD 재export(index.ts) → 위젯
+FSD = {
+    "package.json": pkg({"react": "19"}),
+    "src/app/router/routes.tsx": """
+      const dashboardPage = lazyPage(() => import('@/pages/dashboard').then((m) => m.DashboardPage))
+      export const appRoutes = (<Route path="/" element={<RootLayout />}>
+        <Route path="dashboard" element={screen(dashboardPage)} />
+      </Route>)
+    """,
+    "src/pages/dashboard/index.ts": "export { DashboardPage } from './ui/DashboardPage'",
+    "src/pages/dashboard/ui/DashboardPage.tsx": """
+      import { useWorkspace } from '@/entities/workspace/api/useWorkspace'
+      import { Dashboard } from '@/widgets/dashboard'
+      export function DashboardPage() { return <Dashboard /> }
+    """,
+    "src/widgets/dashboard/index.ts": "export * from './ui/Dashboard'",
+    "src/widgets/dashboard/ui/Dashboard.tsx": (
+        "<section><button onClick={() => add()}>새 태스크</button>"
+        '<input placeholder="검색" onChange={(e) => s(e)} /></section>'
+    ),
+    "src/entities/workspace/api/useWorkspace.ts": "<button>여기는 따라가면 안 됨</button>",
+}
+
+
+def test_wrapped_lazy_and_reexports_reach_widget_elements():
+    snap = make_snap(
+        {
+            "src/app/router/routes.tsx": FSD["src/app/router/routes.tsx"],
+            "package.json": FSD["package.json"],
+        },
+        extra_paths=list(FSD),
+        loader=FSD.get,
+    )
+    dash = next(p for p in build_facts(snap).pages if p.path == "/dashboard")
+    assert dash.file == "src/pages/dashboard/index.ts"
+    assert [e.selector for e in dash.elements] == ["text=새 태스크", 'input[placeholder="검색"]']
+
+
+def test_index_route_wins_over_layout_on_same_path():
+    src = """
+    import Root from './layouts/Root'
+    import Landing from './pages/Landing'
+    export const r = (<Route path="/" element={<Root />}>
+      <Route element={<Guard />}><Route index element={<Landing />} /></Route>
+    </Route>)
+    """
+    snap = make_snap(
+        {"package.json": pkg({"react": "19"}), "src/routes.tsx": src},
+        extra_paths=["src/layouts/Root.tsx", "src/pages/Landing.tsx"],
+    )
+    assert paths_files(snap) == [("/", False, "src/pages/Landing.tsx")]
+
+
+def test_barrel_follows_only_imported_names():
+    files = {
+        "package.json": pkg({"react": "19"}),
+        "src/routes.tsx": """
+          import { SignupPage } from './pages/signup/SignupPage'
+          export const r = <Route path="/signup" element={<SignupPage />} />
+        """,
+        "src/pages/signup/SignupPage.tsx": (
+            "import { SignupForm, type X } from '@/features/auth'\n"
+            "export const SignupPage = () => <SignupForm />"
+        ),
+        "src/features/auth/index.ts": (
+            "export { LoginForm } from './ui/LoginForm'\n"
+            "export { SignupForm as SignupForm } from './ui/SignupForm'\n"
+            "export * from './ui/shared'\n"
+            "export type { X } from './model/types'"
+        ),
+        "src/features/auth/ui/LoginForm.tsx": "<Button>로그인</Button>",
+        "src/features/auth/ui/SignupForm.tsx": "<Button>가입하기</Button>",
+        "src/features/auth/ui/shared.tsx": "<Link to='/'>처음으로</Link>",
+    }
+    snap = make_snap(files, loader=files.get)
+    page = next(p for p in build_facts(snap).pages if p.path == "/signup")
+    assert [e.selector for e in page.elements] == ["text=가입하기", "text=처음으로"]
