@@ -211,3 +211,51 @@ def test_not_demo_matches_whole_segment():  # 리뷰 #8
     ]
     sc = default_scenario(facts(pages), BASE)
     assert [s["path"] for s in sc["steps"]] == ["/policyholders", "/error-tracker", "/registry"]
+
+
+def test_prompt_goes_to_llm_as_reference():
+    llm = FakeLLM(GOOD)
+    build_scenario(facts(), BASE, llm, prompt="검색 기능을 먼저 보여줘")
+    assert "사용자 요청(참고)" in llm.users[0] and "검색 기능을 먼저 보여줘" in llm.users[0]
+
+
+def test_prompt_cannot_add_unknown_paths():
+    draft = ScenarioDraft(steps=[step("goto", path="/admin"), *GOOD.steps])
+    sc = build_scenario(facts(), BASE, FakeLLM(draft), prompt="/admin 으로 가줘")
+    assert "/admin" not in [s.get("path") for s in sc["steps"]]
+
+
+def test_stateful_pages_are_not_demo():
+    from app.scenario import _demo_page
+
+    for p in ["/#/result", "/#/result/detail", "/loading", "/checkout/success", "/oauth/callback"]:
+        assert not _demo_page(p, False), p
+    for p in ["/results-board", "/calendar", "/#/calendar"]:
+        assert _demo_page(p, False), p
+
+
+def test_normalize_prompt():
+    from app.scenario import MAX_PROMPT, normalize_prompt
+
+    assert normalize_prompt(None) is None and normalize_prompt("   ") is None
+    assert len(normalize_prompt("a" * 600)) == MAX_PROMPT == 500
+
+
+def test_analyze_cache_key_includes_prompt_and_version(tmp_path, demo_like_snap):
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/"),
+            step("click", selector="text=시작하기"),
+            step("goto", path="/search"),
+            step("type", selector="input[name=q]", value="React"),
+            step("click", selector="text=검색"),
+        ]
+    )
+    common = {"fetch": lambda url: demo_like_snap, "cache_dir": tmp_path / "cache"}
+    analyze("https://github.com/o/r", BASE, tmp_path / "a", FakeLLM(draft), **common)
+    analyze(
+        "https://github.com/o/r", BASE, tmp_path / "b", FakeLLM(draft), prompt="검색 위주", **common
+    )
+    assert len(list((tmp_path / "cache").glob("scenario__*.json"))) == 2
+    assert (tmp_path / "b" / "prompt.txt").read_text() == "검색 위주"
+    assert not (tmp_path / "a" / "prompt.txt").exists()

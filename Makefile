@@ -48,8 +48,8 @@ dev-web: ## Next.js :3000
 studio: ## Remotion Studio (fixture scene.json 으로 장면 미리보기)
 	pnpm --filter @demoday/render studio
 
-e2e: ## 전체 파이프라인. REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>]
-	scripts/e2e.sh "$(REPO)" "$(URL)" "$(or $(SEC),60)" "$(AUTH)"
+e2e: ## 전체 파이프라인. REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>] [PROMPT="…"]
+	scripts/e2e.sh "$(REPO)" "$(URL)" "$(or $(SEC),60)" "$(AUTH)" "$(PROMPT)"
 
 warm: ## 시연 레포 분석 캐시 채우기 (backend/samples.json, FILE=로 변경). 시연 전에 한 번
 	cd backend && uv run python -m app.cli warm $(if $(FILE),--file $(abspath $(FILE)))
