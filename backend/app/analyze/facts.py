@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from app.analyze.elements import Element, extract_elements
 from app.analyze.resolve import imports_by_spec, reexports, resolve
 from app.analyze.routes import AppRoot, Route, _deps, find_app_root, routes_for
+from app.analyze.services import service_stack
 from app.github import RepoSnapshot
 
 SUMMARY_LIMIT = 300
@@ -40,6 +41,7 @@ class RepoFacts:
     framework: str | None
     pages: list[PageFacts] = field(default_factory=list)
     readme: str = ""  # README 본문(마크업 제거, README_LIMIT 자)
+    services: list[str] = field(default_factory=list)  # 프론트 밖 백엔드·DB·외부 API (services.py)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, indent=2)
@@ -48,6 +50,7 @@ class RepoFacts:
     def from_json(cls, text: str) -> RepoFacts:
         d = json.loads(text)
         d.setdefault("readme", "")  # 이전 run 의 facts.json
+        d.setdefault("services", [])
         d["pages"] = [
             PageFacts(**{**p, "elements": [Element(**e) for e in p["elements"]]})
             for p in d["pages"]
@@ -223,10 +226,11 @@ def build_facts(snap: RepoSnapshot) -> RepoFacts:
     readme = readme_body(text)
     root = find_app_root(snap)
     if root is None:
-        return RepoFacts(name, summary, [], None, None, [], readme)
+        return RepoFacts(name, summary, [], None, None, [], readme, service_stack(snap, None))
     routes = routes_for(snap, root)
     files = frozenset(r.file for r in routes if r.resolved)
     pages = [PageFacts(r.path, r.dynamic, r.file, _elements(snap, r, root, files)) for r in routes]
     snap.save()  # 분석 중 더 받은 컴포넌트 파일까지 캐시
     stack = sorted(_deps(root.package))
-    return RepoFacts(name, summary, stack, root.dir, root.framework, pages, readme)
+    services = service_stack(snap, root)
+    return RepoFacts(name, summary, stack, root.dir, root.framework, pages, readme, services)

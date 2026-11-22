@@ -17,6 +17,10 @@ _API = [
     ("fastify", "Fastify"),
     ("hono", "Hono"),
     ("@nestjs/", "NestJS"),
+    ("fastapi", "FastAPI"),
+    ("django", "Django"),
+    ("flask", "Flask"),
+    ("spring-boot", "Spring Boot"),
 ]
 _DB = [
     ("@prisma/client", "PostgreSQL"),
@@ -64,7 +68,7 @@ def _frontend(facts: RepoFacts) -> str:
 
 
 def infer_architecture(facts: RepoFacts) -> dict:
-    stack = facts.stack
+    stack = [*facts.stack, *facts.services]  # 프론트 의존성 + 레포 안 백엔드 매니페스트
     nodes = [_frontend(facts)]
     api = _first(stack, _API)
     if api is None and nodes[0] == "Next.js" and (_first(stack, _DB) or _first(stack, _EXTERNAL)):
