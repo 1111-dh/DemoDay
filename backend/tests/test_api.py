@@ -5,12 +5,33 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import llm, paths, pipeline, runs, scenario
-from app.analyze.facts import RepoFacts
+from app.analyze.elements import Element
+from app.analyze.facts import PageFacts, RepoFacts
 from app.github import RepoError
 from app.main import app
 
 FIXTURES = paths.ROOT / "contracts" / "fixtures"
 FACTS = RepoFacts("Demo", "소개", ["next"], "", "next-app", [])
+LOGIN_FACTS = RepoFacts(
+    "Demo",
+    "소개",
+    ["next"],
+    "",
+    "next-app",
+    [
+        PageFacts(
+            "/login",
+            False,
+            "f",
+            [
+                Element("input", "email", "input[name=email]"),
+                Element("input", "password", "input[name=password]"),
+                Element("button", "로그인", "text=로그인"),
+            ],
+        )
+    ],
+)
+SEEN: dict = {}
 
 
 @pytest.fixture
@@ -18,13 +39,16 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "RUNS", tmp_path / "runs")
     monkeypatch.setattr(llm, "get_llm", lambda: None)
 
-    def fake_analyze(repo, url, out_dir, _llm):
+    def fake_analyze(repo, url, out_dir, _llm, **kw):
+        SEEN.clear()
+        SEEN.update(kw)
         if "nope" in repo:
             raise RepoError("레포를 찾을 수 없습니다")
         sc = json.loads((FIXTURES / "scenario.json").read_text())
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "scenario.json").write_text(json.dumps(sc))
-        (out_dir / "facts.json").write_text(FACTS.to_json())
+        facts = LOGIN_FACTS if "login" in repo else FACTS
+        (out_dir / "facts.json").write_text(facts.to_json())
         return sc
 
     def fake_capture(run_dir):
@@ -209,3 +233,43 @@ def test_put_redacted_scenario_keeps_stored_secrets(client):
 
 def test_create_run_invalid_auth_422(client):
     assert create_with_auth(client, {"steps": []}).status_code == 422
+
+
+def _post(client, **extra):
+    body = {"repo": "https://github.com/o/r", "url": "https://x.dev", **extra}
+    return client.post("/api/runs", json=body)
+
+
+def test_create_run_with_login(client):
+    res = _post(
+        client,
+        repo="https://github.com/o/login-app",
+        login={"username": "demo@x.dev", "password": "pw-123"},
+    )
+    assert res.status_code == 200, res.text
+    steps = res.json()["scenario"]["auth"]["steps"]
+    assert [s["action"] for s in steps] == ["goto", "type", "type", "click"]
+    assert steps[2]["value"] == "***"
+    stored = json.loads((runs.run_dir(res.json()["id"]) / "scenario.json").read_text())
+    assert stored["auth"]["steps"][2]["value"] == "pw-123"
+
+
+def test_create_run_login_not_found_is_400(client):
+    res = _post(client, login={"username": "u", "password": "p"})
+    assert res.status_code == 400
+    assert "로그인 URL" in res.json()["detail"]
+
+
+def test_create_run_login_and_auth_conflict_422(client):
+    auth = {"steps": [{"id": 1, "action": "goto", "path": "/l", "caption": "로그인"}]}
+    res = _post(client, login={"username": "u", "password": "p"}, auth=auth)
+    assert res.status_code == 422
+
+
+def test_create_run_prompt_too_long_422(client):
+    assert _post(client, prompt="가" * 501).status_code == 422
+
+
+def test_create_run_passes_prompt(client):
+    assert _post(client, prompt="검색 위주").status_code == 200
+    assert SEEN["prompt"] == "검색 위주"
