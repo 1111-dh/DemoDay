@@ -22,16 +22,17 @@ from app.github import RepoSnapshot, fetch_repo
 from app.llm import LLM, generate
 
 MAX_STEPS = 7
+MAX_SCROLLS = 2  # 같은 화면에서 이어지는 스크롤 (긴 랜딩 페이지)
 MAX_PROMPT = 500
 README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
-SCENARIO_VERSION = 8  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 9  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
 
 
 class StepDraft(BaseModel):
-    action: Literal["goto", "click", "type"]
+    action: Literal["goto", "click", "type", "scroll"]
     path: str
     selector: str
     value: str
@@ -157,6 +158,17 @@ def _ground(draft: ScenarioDraft, facts: RepoFacts) -> tuple[list[dict], list[st
         if current is None:
             current = "/" if "/" in pages else next(iter(pages), "/")
             steps.append({"action": "goto", "path": current, "caption": _caption_for(current)})
+        if s.action == "scroll":  # 셀렉터 없이 화면을 아래로 — 연속은 MAX_SCROLLS 번까지
+            run = 0
+            for prev in reversed(steps):
+                if prev["action"] != "scroll":
+                    break
+                run += 1
+            if run >= MAX_SCROLLS:
+                dropped.append(f"scroll: 연속 스크롤은 {MAX_SCROLLS}번까지")
+                continue
+            steps.append({"action": "scroll", "caption": caption or "아래로 살펴보기"})
+            continue
         if s.selector not in pages.get(current, click_only.get(current, set())):
             dropped.append(f"{s.action} {s.selector!r}: 페이지 {current}의 elements에 없음")
             continue
