@@ -8,7 +8,7 @@ const scenario = {
     id: index + 1,
     action: "goto",
     caption,
-    path: "/page-" + index,
+    path: index === 0 ? "/" : "/page-" + index,
   })),
 };
 
@@ -38,6 +38,8 @@ async function verify(browser, touch) {
     const order = () => handles.locator("b").allTextContents();
     const initial = await handles.first().waitFor().then(order);
     assert.equal(initial.length, 4);
+    assert.equal(await handles.first().locator("small").count(), 0);
+    assert.equal(await handles.nth(1).locator("small").innerText(), "/page-1");
     await handles.first().scrollIntoViewIfNeeded();
     const first = await handles.first().boundingBox();
     const last = await handles.last().boundingBox();

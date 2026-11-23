@@ -16,7 +16,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Scenario } from "@demoday/contracts";
 
 type Steps = Scenario["steps"];
-const hold = { delay: 250, tolerance: 8 };
+const hold = { delay: 125, tolerance: 8 };
 
 function StepRow({
   step,
@@ -67,7 +67,7 @@ function StepRow({
           <b>
             {index + 1}. {step.caption}
           </b>
-          {step.path && <small>{step.path}</small>}
+          {step.path && step.path !== "/" && <small>{step.path}</small>}
         </span>
       </button>
       <button
