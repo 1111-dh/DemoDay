@@ -69,7 +69,35 @@ def _clickable(kind: Kind, attrs: str, inner: str) -> Element | None:
         return Element(kind, label, f'[aria-label="{label}"]')
     if text := _clean(inner):
         return Element(kind, text, f"text={text}")
+    # 아이콘만 있는 링크(nuxt/movies 왼쪽 메뉴) — title 속성이 화면 이름
+    if (title := _attr(attrs, "title")) and len(title) <= MAX_TEXT:
+        return Element(kind, title, f'[title="{title}"]')
     return None
+
+
+# 번역 호출: {{ $t('k') }} · {t("k")} · :attr="$t('k')" · attr={t('k')}
+_T_CALL = r"""\$?t\(\s*['"]([^'"\n]{1,120})['"]\s*\)"""
+_T_TEXT = re.compile(r"\{\{\s*" + _T_CALL + r"\s*\}\}|\{\s*" + _T_CALL + r"\s*\}")
+_T_ATTR = re.compile(
+    r"""(?<![\w-]):?([\w-]+)=(?:"\s*""" + _T_CALL + r"""\s*"|\{\s*""" + _T_CALL + r"\s*\})"
+)
+
+
+def _translate(source: str, messages: dict[str, str]) -> str:
+    """번역에 있는 키만 실제 문구로 바꾼다. 따옴표·중괄호가 든 문구는 셀렉터가 깨져서 안 바꾼다."""
+
+    def ok(text: str | None) -> bool:
+        return bool(text) and not any(c in text for c in '"{}<>')
+
+    def text(m: re.Match) -> str:
+        found = messages.get(m.group(1) or m.group(2))
+        return found if ok(found) else m.group(0)
+
+    def attr(m: re.Match) -> str:
+        found = messages.get(m.group(2) or m.group(3))
+        return f'{m.group(1)}="{found}"' if ok(found) else m.group(0)
+
+    return _T_TEXT.sub(text, _T_ATTR.sub(attr, source))
 
 
 def _input(attrs: str) -> Element | None:
@@ -100,7 +128,11 @@ def _nav_items(source: str) -> list[tuple[int, Element]]:
     return found
 
 
-def extract_elements(source: str, limit: int = 15) -> list[Element]:
+def extract_elements(
+    source: str, limit: int = 15, messages: dict[str, str] | None = None
+) -> list[Element]:
+    if messages:
+        source = _translate(source, messages)
     found: list[tuple[int, Element]] = _nav_items(source)
     for m in _OPEN.finditer(source):
         tag = m.group(1)

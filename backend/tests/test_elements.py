@@ -112,3 +112,28 @@ def test_nav_config_objects_become_links():  # managers-manager shellTabs.ts
         ("link", "회의록", "text=회의록"),
         ("link", "도움말", "text=도움말"),
     ]
+
+
+def test_translated_text_resolved_with_messages():  # nuxt/movies: 모든 문구가 $t('…')
+    msgs = {"Type to search...": "Type to search...", "nav.home": "홈", "Search": "검색"}
+    vue = """<template>
+      <input v-model="q" :placeholder="$t('Type to search...')">
+      <NuxtLink to="/" :title="$t('nav.home')"><div i-ph-house /></NuxtLink>
+      <button>{{ $t('Search') }}</button>
+      <button>{{ $t('missing.key') }}</button>
+    </template>"""
+    out = [(e.kind, e.text, e.selector) for e in extract_elements(vue, messages=msgs)]
+    assert out == [
+        ("input", "Type to search...", 'input[placeholder="Type to search..."]'),
+        ("link", "홈", '[title="홈"]'),
+        ("button", "검색", "text=검색"),
+    ]  # 번역에 없는 키는 지금처럼 버린다
+
+
+def test_jsx_t_calls_resolved():
+    jsx = '<input placeholder={t("search.ph")} /><button>{t("go")}</button>'
+    out = [
+        e.selector for e in extract_elements(jsx, messages={"search.ph": "검색어", "go": "찾기"})
+    ]
+    assert out == ['input[placeholder="검색어"]', "text=찾기"]
+    assert extract_elements(jsx) == []  # 번역 없으면 예전처럼 아무것도 안 뽑는다

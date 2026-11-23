@@ -7,6 +7,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from app.analyze.elements import Element, extract_elements
+from app.analyze.i18n import load_messages
 from app.analyze.resolve import imports_by_spec, reexports, resolve
 from app.analyze.routes import AppRoot, Route, _deps, find_app_root, routes_for
 from app.analyze.services import service_stack
@@ -205,7 +206,11 @@ def _next_specs(src: str, wanted: set[str] | None) -> list[tuple[str, set[str] |
 
 
 def page_elements(
-    snap: RepoSnapshot, route: Route, root: AppRoot, others: frozenset[str] = frozenset()
+    snap: RepoSnapshot,
+    route: Route,
+    root: AppRoot,
+    others: frozenset[str] = frozenset(),
+    messages: dict[str, str] | None = None,
 ) -> list[Element]:
     """페이지 파일의 요소 + 그 파일이 import 하는 컴포넌트의 요소 (BFS, 등장 순서).
 
@@ -224,7 +229,7 @@ def page_elements(
         file, depth, wanted = queue.pop(0)
         read += 1
         src = snap.read(file) or ""
-        for el in extract_elements(src):
+        for el in extract_elements(src, messages=messages):
             if el.selector not in selectors:
                 selectors.add(el.selector)
                 out.append(el)
@@ -250,7 +255,11 @@ def page_elements(
 
 
 def _elements(
-    snap: RepoSnapshot, route: Route, root: AppRoot, pages: frozenset[str]
+    snap: RepoSnapshot,
+    route: Route,
+    root: AppRoot,
+    pages: frozenset[str],
+    messages: dict[str, str] | None = None,
 ) -> list[Element]:
     """페이지 요소. 동적 경로도 뽑는다 — goto 는 못 해도 앞 화면에서 클릭으로 들어갈 수 있다.
 
@@ -260,11 +269,11 @@ def _elements(
         from app.analyze.flutter import flutter_page_elements
 
         return flutter_page_elements(snap, route, root, pages - {route.file})
-    out = page_elements(snap, route, root, pages - {route.file})
+    out = page_elements(snap, route, root, pages - {route.file}, messages)
     seen = {e.selector for e in out}
     for layout in route.layouts:  # 감싸는 레이아웃(사이드바 메뉴 등)의 요소는 화면 요소 뒤에
         shell = Route(route.path, False, layout)
-        for el in page_elements(snap, shell, root, pages - {layout}):
+        for el in page_elements(snap, shell, root, pages - {layout}, messages):
             if el.selector not in seen and len(out) < MAX_ELEMENTS:
                 seen.add(el.selector)
                 out.append(el)
@@ -280,7 +289,11 @@ def build_facts(snap: RepoSnapshot) -> RepoFacts:
         return RepoFacts(name, summary, [], None, None, [], readme, service_stack(snap, None))
     routes = routes_for(snap, root)
     files = frozenset(r.file for r in routes if r.resolved)
-    pages = [PageFacts(r.path, r.dynamic, r.file, _elements(snap, r, root, files)) for r in routes]
+    messages = load_messages(snap)
+    pages = [
+        PageFacts(r.path, r.dynamic, r.file, _elements(snap, r, root, files, messages))
+        for r in routes
+    ]
     snap.save()  # 분석 중 더 받은 컴포넌트 파일까지 캐시
     stack = sorted(_deps(root.package))
     services = service_stack(snap, root)
