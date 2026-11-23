@@ -8,3 +8,4 @@
 - 좌표(zoom, cursor)는 캡처 viewport 1280x720 기준 px이고, Composition도 1280x720이다.
 - 새 장면 type 추가 순서: (팀 합의) 스키마 → `make gen` → `src/scenes/XScene.tsx` → `Demo.tsx`의 switch에 case 추가 → fixture에 예시 추가 → `make check`. switch는 `never` 검사를 하므로 case를 빼먹으면 typecheck가 실패한다.
 - 장면 전환은 `TransitionSeries`로 앞 장면과 0.3초 겹친다(`timing.ts`의 `overlapFrames`/`totalFrames`). 전체 길이는 겹친 만큼 줄어든다. 글꼴은 `public/fonts`의 Pretendard(OFL)를 `theme.ts`에서 `loadFont`로 불러온다 — 시스템 폰트 이름만 쓰지 않는다.
+- 화면 장면 자막(`ScreenScene.tsx`의 `Caption`: left 56, bottom 34, 글꼴 30px, padding 14/24)의 위치·크기를 바꾸면 C의 영상 회귀 테스트 `scripts/video-regression/captions.py`(자막 상자를 좌표로 읽는다)도 같이 고친다.
