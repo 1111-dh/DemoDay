@@ -97,8 +97,10 @@ async function run(c: Ctx, step: Step): Promise<Result> {
       const res = await page.goto(c.baseUrl.replace(/\/+$/, "") + path, { waitUntil: "load" });
       // 없는 페이지(404 등)는 정상 장면처럼 들어가지 않게 fallback으로. 메시지에 URL은 넣지 않는다(auth secret)
       if (res && res.status() >= 400) throw new Error(`HTTP ${res.status()}`);
+      // clip은 페이지가 뜬 뒤부터 — 로딩 중 빈 화면이 장면 앞을 채우지 않게
+      const clipStart = Date.now();
       await enableFlutterSemantics(page);
-      return { click: null };
+      return { click: null, clipStart };
     }
     case "click": {
       // trial: 클릭 없이 스크롤·actionability만 확인. 리렌더로 요소가 바뀌어도 재시도한다(scrollIntoViewIfNeeded는 안 함)
