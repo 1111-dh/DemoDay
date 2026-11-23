@@ -106,3 +106,31 @@ def test_get_describer_follows_groq_key(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "groq")
     monkeypatch.setenv("GROQ_VISION_MODEL", "")
     assert get_describer() is None  # 빈 값이면 끈다
+
+
+def test_get_describer_baze_first_then_groq(monkeypatch):
+    from app.vision import FallbackDescriber
+
+    monkeypatch.setenv("LLM_PROVIDER", "baze")
+    monkeypatch.setenv("BAZE_API_KEY", "b")
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    monkeypatch.delenv("GROQ_VISION_MODEL", raising=False)
+    monkeypatch.delenv("BAZE_VISION_MODEL", raising=False)
+    d = get_describer()
+    assert isinstance(d, FallbackDescriber)
+    assert d.primary.model == "claude-haiku-5-5" and d.primary.url.endswith("/chat/completions/")
+    assert d.backup.model == "qwen/qwen3.8-27b"
+
+
+def test_fallback_describer_switches_when_primary_is_down():
+    from app.vision import FallbackDescriber
+
+    class Backup:
+        def describe_many(self, images):
+            return ["백업"] * len(images)
+
+    down = _vision(lambda req: httpx.Response(402, json={"detail": "크레딧 부족"}))
+    d = FallbackDescriber(down, Backup())
+    assert d.describe_many([png("red")]) == ["백업"]
+    ok = _vision(lambda req: _reply("1: 주 모델"))
+    assert FallbackDescriber(ok, Backup()).describe_many([png("red")]) == ["주 모델"]

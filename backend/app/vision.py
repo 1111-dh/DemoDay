@@ -22,7 +22,14 @@ from typing import Protocol
 import httpx
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-from app.llm import GROQ_BASE_URL, post_with_rate_retry
+from app.llm import (
+    BAZE_BASE_URL,
+    BAZE_CHAT_PATH,
+    BAZE_MODEL,
+    GROQ_BASE_URL,
+    is_down,
+    post_with_rate_retry,
+)
 
 GROQ_VISION_MODEL = "qwen/qwen3.8-27b"  # Groq 무료 플랜에서 이미지 입력이 되는 모델(11/23 확인)
 MAX_SEEN = 80
@@ -87,10 +94,12 @@ class GroqVision:
         base_url: str,
         api_key: str,
         model: str,
+        chat_path: str = "/chat/completions",
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ):
-        self.url = base_url.rstrip("/") + "/chat/completions"
+        self.url = base_url.rstrip("/") + chat_path
+        self.down = False  # 크레딧·인증·서버 오류 — FallbackDescriber 가 예비로 넘긴다
         self.headers = {"Authorization": f"Bearer {api_key}"}
         self.model = model
         self.client = client or httpx.Client(timeout=60)
@@ -112,11 +121,15 @@ class GroqVision:
             parts.append({"type": "image_url", "image_url": {"url": url}})
         body = {
             "model": self.model,
-            "max_tokens": 80 * n + 100,
+            "max_tokens": 150 * n + 200,
             "messages": [{"role": "user", "content": parts}],
         }
-        res = post_with_rate_retry(self.client, self.url, self.headers, body, self.sleep)
+        errors: list[int] = []
+        res = post_with_rate_retry(
+            self.client, self.url, self.headers, body, self.sleep, errors=errors
+        )
         if res is None:
+            self.down = any(is_down(e) for e in errors)
             return [None] * n
         try:
             content = res.json()["choices"][0]["message"]["content"] or ""
@@ -125,11 +138,43 @@ class GroqVision:
         return parse_numbered(content, n, start)
 
 
-def get_describer() -> Describer | None:
-    """Groq 를 쓸 때만. GROQ_VISION_MODEL 로 모델을 바꾸고, 빈 값이면 끈다."""
-    provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+class FallbackDescriber:
+    """주 이미지 모델(BAZE)이 크레딧·인증·서버 오류로 내려가면 예비(Groq)로 읽는다."""
+
+    def __init__(self, primary: GroqVision, backup: Describer):
+        self.primary = primary
+        self.backup = backup
+
+    def describe_many(self, images: list[bytes]) -> list[str | None]:
+        if not self.primary.down:
+            out = self.primary.describe_many(images)
+            if any(out) or not self.primary.down:
+                return out
+        return self.backup.describe_many(images)
+
+
+def _groq_vision() -> GroqVision | None:
     key = os.environ.get("GROQ_API_KEY")
     model = os.environ.get("GROQ_VISION_MODEL", GROQ_VISION_MODEL).strip()
-    if provider not in ("", "groq") or not key or not model:
+    return GroqVision(base_url=GROQ_BASE_URL, api_key=key, model=model) if key and model else None
+
+
+def get_describer() -> Describer | None:
+    """LLM 공급자를 따른다: BAZE(기본 Haiku 5.5, BAZE_VISION_MODEL) → 예비 Groq qwen.
+
+    Groq 만 쓸 때는 GROQ_VISION_MODEL(빈 값이면 끔). anthropic 등 다른 공급자는 None.
+    """
+    provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    baze_key = os.environ.get("BAZE_API_KEY")
+    if provider == "baze" or (not provider and baze_key):
+        model = os.environ.get("BAZE_VISION_MODEL", BAZE_MODEL).strip()
+        if not baze_key or not model:
+            return _groq_vision()
+        baze = GroqVision(
+            base_url=BAZE_BASE_URL, api_key=baze_key, model=model, chat_path=BAZE_CHAT_PATH
+        )
+        backup = _groq_vision()
+        return FallbackDescriber(baze, backup) if backup else baze
+    if provider not in ("", "groq"):
         return None
-    return GroqVision(base_url=GROQ_BASE_URL, api_key=key, model=model)
+    return _groq_vision()

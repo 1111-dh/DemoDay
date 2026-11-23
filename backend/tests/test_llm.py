@@ -204,3 +204,100 @@ def test_get_llm_groq_fallback_model(monkeypatch):
     assert get_llm().fallback_models == ["qwen/qwen3.8-27b"]
     monkeypatch.setenv("GROQ_FALLBACK_MODEL", "")
     assert get_llm().fallback_models == []
+
+
+def _baze(handler, **kw):
+    import httpx
+
+    from app.llm import BAZE_BASE_URL, OpenAICompatLLM
+
+    return OpenAICompatLLM(
+        base_url=BAZE_BASE_URL,
+        api_key="k",
+        model="claude-haiku-5-5",
+        chat_path="/chat/completions/",
+        strict=True,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda s: None,
+        **kw,
+    )
+
+
+def test_baze_strict_schema_and_trailing_slash():
+    """BAZE 는 strict 스키마에 additionalProperties:false 가 필수."""
+    import json
+
+    from pydantic import BaseModel
+
+    class Inner(BaseModel):
+        a: int
+
+    class Outer(BaseModel):
+        items: list[Inner]
+        note: str = ""
+
+    seen = {}
+
+    def handler(req):
+        seen["url"] = str(req.url)
+        seen["body"] = json.loads(req.content)
+        return _reply('{"items": [{"a": 1}], "note": ""}')
+
+    out = _baze(handler).parse(system="s", user="u", output=Outer)
+    assert out == Outer(items=[Inner(a=1)])
+    assert seen["url"] == "https://api.baze.co/v1/gateway/chat/completions/"
+    fmt = seen["body"]["response_format"]["json_schema"]
+    assert fmt["strict"] is True
+    schema = fmt["schema"]
+    assert schema["additionalProperties"] is False
+    assert sorted(schema["required"]) == ["items", "note"]  # strict 는 모든 필드가 required
+    assert schema["$defs"]["Inner"]["additionalProperties"] is False
+
+
+def test_fallback_llm_switches_when_primary_is_down():
+    import httpx
+
+    from app.llm import FallbackLLM
+    from tests.fakes import FakeLLM
+
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(402, json={"detail": {"code": 402, "message": "크레딧 부족"}})
+
+    primary = _baze(handler)
+    backup = FakeLLM(Out(n=5), Out(n=6))
+    llm = FallbackLLM(primary, backup)
+    assert llm.parse(system="s", user="u", output=Out) == Out(n=5)
+    assert llm.parse(system="s", user="u", output=Out) == Out(n=6)
+    assert len(calls) == 1  # 한 번 내려가면 다시 두드리지 않는다
+
+
+def test_fallback_llm_keeps_primary_on_bad_output():
+    """형식 오류는 generate 재시도 몫 — 예비로 넘기지 않는다."""
+    from app.llm import FallbackLLM
+    from tests.fakes import FakeLLM
+
+    primary = _baze(lambda req: _reply('{"n": "x"}'))
+    backup = FakeLLM(Out(n=5))
+    assert FallbackLLM(primary, backup).parse(system="s", user="u", output=Out) is None
+    assert backup.users == []
+
+
+def test_get_llm_picks_baze_with_groq_backup(monkeypatch):
+    from app.llm import FallbackLLM, OpenAICompatLLM
+
+    monkeypatch.setenv("LLM_PROVIDER", "baze")
+    monkeypatch.setenv("BAZE_API_KEY", "b")
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    monkeypatch.delenv("BAZE_MODEL", raising=False)
+    llm = get_llm()
+    assert isinstance(llm, FallbackLLM)
+    assert llm.primary.model == "claude-haiku-5-5" and llm.primary.strict
+    assert isinstance(llm.backup, OpenAICompatLLM) and "groq" in llm.backup.url
+    monkeypatch.delenv("GROQ_API_KEY")
+    only = get_llm()
+    assert isinstance(only, OpenAICompatLLM) and only.model == "claude-haiku-5-5"
+    monkeypatch.delenv("BAZE_API_KEY")
+    assert get_llm() is None
