@@ -1,12 +1,10 @@
 import { AbsoluteFill, Easing, Freeze, getStaticFiles, Img, interpolate, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { ScreenScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
-import { Backdrop, Words } from "../motion";
+import { Backdrop, fitFont, Words } from "../motion";
 
 const W = 1280;
 const H = 720;
-/** 브라우저 카드 안 화면 배율. 화면 내부는 캡처 좌표(1280x720) 그대로 그리고 통째로 줄인다. */
-const S = 0.86;
 const BAR = 36;
 
 /** 녹화 구간을 장면 길이에 맞추는 재생 속도 범위. 벗어나면 마지막 프레임에서 멈춘다. */
@@ -286,7 +284,7 @@ const SideCaption: React.FC<{ text: string; highlight?: string[]; step?: string;
           <span style={{ color: theme.sub, fontWeight: 600 }}> / {String(count).padStart(2, "0")}</span>
         </div>
       )}
-      <Words text={text} delay={0.25} accent={highlight} style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.22, letterSpacing: "-0.03em" }} />
+      <Words text={text} delay={0.25} accent={highlight} style={{ fontSize: fitFont(text, width - 8, 44), fontWeight: 700, lineHeight: 1.22, letterSpacing: "-0.03em", maxWidth: width }} />
       <div style={{ marginTop: 26, width: 64 * bar, height: 6, borderRadius: 3, background: theme.accent }} />
     </div>
   );

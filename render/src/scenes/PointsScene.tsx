@@ -1,7 +1,7 @@
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { PointsScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
-import { Backdrop, Pill, Words } from "../motion";
+import { Backdrop, fitFont, Pill, Words } from "../motion";
 
 type Props = { scene: T; durationInFrames: number };
 type IconName = T["items"][number]["icon"];
@@ -89,7 +89,7 @@ export const PointsScene: React.FC<Props> = ({ scene, durationInFrames }) => {
       <AbsoluteFill style={{ transform: `scale(${drift})` }}>
         <div style={{ position: "absolute", top: 92, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
           {scene.kicker && <Pill text={scene.kicker} color={color} light={problem} />}
-          <Words text={scene.heading} delay={0.15} style={{ marginTop: 24, fontSize: 50, fontWeight: 700, letterSpacing: "-0.03em", justifyContent: "center", maxWidth: 1080 }} />
+          <Words text={scene.heading} delay={0.15} style={{ marginTop: 24, fontSize: fitFont(scene.heading, 1000, 50), fontWeight: 700, letterSpacing: "-0.03em", justifyContent: "center", maxWidth: 1080 }} />
         </div>
 
         {!problem && n > 1 && (
@@ -154,7 +154,7 @@ export const PointsScene: React.FC<Props> = ({ scene, durationInFrames }) => {
               >
                 <Icon name={item.icon} size={56} color={problem ? "#ff8a7a" : theme.accent} />
               </div>
-              <div style={{ position: "relative", fontSize: 30, fontWeight: 700, textAlign: "center", lineHeight: 1.25, padding: "0 18px", opacity: problem ? interpolate(strike, [0, 1], [1, 0.6]) : 1 }}>
+              <div style={{ position: "relative", fontSize: fitFont(item.text, cardW - 40, 30), fontWeight: 700, textAlign: "center", lineHeight: 1.25, padding: "0 18px", maxWidth: cardW, overflowWrap: "anywhere", opacity: problem ? interpolate(strike, [0, 1], [1, 0.6]) : 1 }}>
                 {item.text}
                 {problem && (
                   <div style={{ position: "absolute", left: 14, top: "52%", height: 4, borderRadius: 2, width: `calc(${strike * 100}% - 28px)`, background: theme.red }} />

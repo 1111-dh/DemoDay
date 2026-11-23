@@ -38,6 +38,20 @@ export const Backdrop: React.FC<{ seed?: number; dark?: boolean }> = ({ seed = 0
   );
 };
 
+/** 굵은 글꼴 기준 글자 폭 추정(em): 한글·한자 1, 영문 대문자 0.74, 소문자·숫자 0.62, 기호 0.4. */
+function units(word: string): number {
+  return [...word].reduce((n, c) => n + (/[\u3131-\uD79D\u4E00-\u9FFF]/.test(c) ? 1 : /[A-Z]/.test(c) ? 0.74 : /[a-z0-9]/.test(c) ? 0.62 : 0.4), 0);
+}
+
+/**
+ * 가장 긴 단어가 maxWidth 안에 들어가는 글자 크기(base 이하, base의 45% 이상).
+ * 단어는 마스크 애니메이션 때문에 통째로 움직이므로 단어 안에서 줄이 바뀌지 않는다 — 긴 레포 이름이 넘치지 않게.
+ */
+export function fitFont(text: string, maxWidth: number, base: number): number {
+  const longest = Math.max(1, ...text.split(/\s+/).map(units));
+  return Math.max(base * 0.45, Math.min(base, Math.floor(maxWidth / longest)));
+}
+
 /**
  * 키네틱 타이포: 단어마다 아래에서 가려진 채로 올라오며(마스크) 흐림이 걷힌다.
  * accent에 든 단어는 주황. delay·stagger는 초.
@@ -59,10 +73,12 @@ export const Words: React.FC<{
         const p = spring({ frame, fps, delay: (delay + i * stagger) * fps, config: { damping: 18, mass: 0.7 } });
         const hit = accent.some((a) => a && (w.includes(a) || a.includes(w)));
         return (
-          <span key={i} style={{ display: "inline-block", overflow: "hidden", paddingBottom: "0.12em", marginBottom: "-0.12em" }}>
+          <span key={i} style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", paddingBottom: "0.12em", marginBottom: "-0.12em" }}>
             <span
               style={{
                 display: "inline-block",
+                maxWidth: "100%",
+                overflowWrap: "anywhere", // 최소 크기로도 넘치면 단어 안에서라도 줄을 바꾼다
                 transform: `translateY(${interpolate(p, [0, 1], [105, 0])}%)`,
                 filter: `blur(${interpolate(p, [0, 1], [6, 0], clamp)}px)`,
                 opacity: interpolate(p, [0, 0.4], [0, 1], clamp),

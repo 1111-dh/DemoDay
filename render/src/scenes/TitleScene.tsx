@@ -1,7 +1,7 @@
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { TitleScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
-import { Backdrop, Pill, Words } from "../motion";
+import { Backdrop, fitFont, Pill, Words } from "../motion";
 
 type Props = { scene: T; durationInFrames: number };
 
@@ -82,6 +82,10 @@ export const TitleScene: React.FC<Props> = ({ scene, durationInFrames }) => {
     easing: Easing.inOut(Easing.cubic),
   });
   const color = problem ? theme.red : theme.accent;
+  // 레포 이름이 길어 600px에 큰 글씨로 안 들어가면 오른쪽 장식을 빼고 넓게 쓴다
+  const narrow = fitFont(scene.text, 600, 92);
+  const roomy = narrow >= 60;
+  const titleSize = roomy ? narrow : fitFont(scene.text, 1040, 92);
 
   return (
     <AbsoluteFill style={{ fontFamily: theme.font, color: problem ? "white" : theme.ink, ...theme.keepAll }}>
@@ -91,7 +95,7 @@ export const TitleScene: React.FC<Props> = ({ scene, durationInFrames }) => {
           <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 140px", textAlign: "center" }}>
             <Pill text={scene.kicker ?? ""} color={color} light={problem} />
             <div style={{ position: "relative", marginTop: 34 }}>
-              <Words text={scene.text} delay={0.2} style={{ fontSize: 70, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.22, justifyContent: "center", maxWidth: 1000 }} />
+              <Words text={scene.text} delay={0.2} style={{ fontSize: fitFont(scene.text, 960, 70), fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.22, justifyContent: "center", maxWidth: 1000 }} />
               <div
                 style={{
                   margin: "26px auto 0",
@@ -106,11 +110,11 @@ export const TitleScene: React.FC<Props> = ({ scene, durationInFrames }) => {
         ) : (
           <AbsoluteFill style={{ justifyContent: "center", alignItems: "flex-start", padding: "0 120px" }}>
             <div style={{ width: 72 * bar, height: 8, borderRadius: 4, background: theme.accent, marginBottom: 36 }} />
-            <Words text={scene.text} delay={0.1} stagger={0.09} style={{ fontSize: 92, fontWeight: 700, letterSpacing: "-0.035em", lineHeight: 1.12, maxWidth: 640 }} />
+            <Words text={scene.text} delay={0.1} stagger={0.09} style={{ fontSize: titleSize, fontWeight: 700, letterSpacing: "-0.035em", lineHeight: 1.12, maxWidth: roomy ? 640 : 1040 }} />
             {scene.subtitle && (
               <Words text={scene.subtitle} delay={0.6} stagger={0.05} style={{ fontSize: 32, fontWeight: 500, color: theme.sub, marginTop: 30, maxWidth: 600, lineHeight: 1.4 }} />
             )}
-            <Rings letter={[...scene.text.trim()][0] ?? "D"} />
+            {roomy && <Rings letter={[...scene.text.trim()][0] ?? "D"} />}
           </AbsoluteFill>
         )}
       </AbsoluteFill>
