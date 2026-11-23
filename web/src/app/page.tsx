@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import Image from "next/image";
 import type { Scenario, SceneDoc } from "@demoday/contracts";
 import Editor from "./editor";
+import ScenarioSteps from "./scenario-steps";
 import presets from "../../../backend/samples.json";
 
 import videoFixture from "@demoday/contracts/fixtures/scene.video.json";
@@ -82,38 +83,6 @@ async function request(
             "). 입력과 서버 연결을 확인해 주세요.",
     );
   return data;
-}
-function Order({
-  index,
-  count,
-  move,
-}: {
-  index: number;
-  count: number;
-  move: (delta: number) => void;
-}) {
-  return (
-    <span className="order">
-      {[-1, 1].map((d) => (
-        <button
-          type="button"
-          key={d}
-          aria-label={
-            String(index + 1) + "번째 항목 " + (d < 0 ? "위로" : "아래로")
-          }
-          disabled={index + d < 0 || index + d >= count}
-          onClick={() => move(d)}
-        >
-          {d < 0 ? "↑" : "↓"}
-        </button>
-      ))}
-    </span>
-  );
-}
-function moved<T>(list: T[], index: number, delta: number) {
-  const next = [...list];
-  [next[index], next[index + delta]] = [next[index + delta], next[index]];
-  return next;
 }
 const subscribe = () => () => {};
 export default function Home() {
@@ -456,43 +425,11 @@ function Studio() {
                 {repo.replace("https://github.com/", "")} · 최대 {totalSec}초
               </div>
               <h2>촬영 순서</h2>
-              {scenario.steps.map((s, i) => (
-                <article key={s.id}>
-                  <b>
-                    {i + 1}. {s.caption}
-                    <small>{s.path}</small>
-                  </b>
-                  <div>
-                    <Order
-                      index={i}
-                      count={scenario.steps.length}
-                      move={(d) =>
-                        setScenario({
-                          ...scenario,
-                          steps: moved(
-                            scenario.steps,
-                            i,
-                            d,
-                          ) as Scenario["steps"],
-                        })
-                      }
-                    />
-                    <button
-                      disabled={scenario.steps.length === 1}
-                      onClick={() =>
-                        setScenario({
-                          ...scenario,
-                          steps: scenario.steps.filter(
-                            (_, j) => j !== i,
-                          ) as Scenario["steps"],
-                        })
-                      }
-                    >
-                      삭제
-                    </button>
-                  </div>
-                </article>
-              ))}
+              <ScenarioSteps
+                steps={scenario.steps}
+                busy={busy}
+                change={(steps) => setScenario({ ...scenario, steps })}
+              />
 
               <button
                 className="primary"
