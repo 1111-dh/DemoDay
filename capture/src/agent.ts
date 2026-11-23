@@ -7,7 +7,7 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import type { Page } from "playwright";
 import type { Scenario } from "@demoday/contracts";
@@ -196,8 +196,13 @@ async function scriptDecider(file: string): Promise<Decider> {
   };
 }
 
-function processDecider(cmd: string): Decider {
-  const child: ChildProcessWithoutNullStreams = spawn(cmd, { shell: true, stdio: ["pipe", "pipe", "pipe"] });
+/**
+ * 에이전트 프로세스. run 디렉터리는 캡처가 가장 정확히 아니 직접 넘긴다(관찰의 screenshot 기준 경로).
+ * PYTHONUTF8: Windows 기본 인코딩(cp949)이면 프롬프트 파일·한글 JSON 을 못 읽는다.
+ */
+function processDecider(cmd: string, runDir: string): Decider {
+  const env = { ...process.env, DEMODAY_RUN_DIR: resolve(runDir), PYTHONUTF8: "1" };
+  const child: ChildProcessWithoutNullStreams = spawn(cmd, { shell: true, env, stdio: ["pipe", "pipe", "pipe"] });
   child.stderr.on("data", (d) => process.stderr.write(`  [agent] ${d}`));
   const lines: Interface = createInterface({ input: child.stdout });
   const queue: ((line: string | null) => void)[] = [];
@@ -254,7 +259,7 @@ export async function* agentSteps(o: AgentOptions, executed: Step[]): AsyncGener
 
   let decider: Decider;
   try {
-    decider = o.script ? await scriptDecider(o.script) : processDecider(o.cmd);
+    decider = o.script ? await scriptDecider(o.script) : processDecider(o.cmd, o.runDir);
   } catch (e) {
     console.warn(`! 에이전트 시작 실패 — 시나리오 단계로: ${e instanceof Error ? e.message : e}`);
     yield* fallback(o.scenario, executed);

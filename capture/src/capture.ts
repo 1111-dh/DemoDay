@@ -19,6 +19,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { agentSteps } from "./agent";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
@@ -379,7 +380,8 @@ const agentArgs: AgentArgs = agentOn
   ? {
       goal: opt.goal || "이 서비스의 핵심 기능을 처음 쓰는 사람처럼 직접 써 보며 보여준다",
       script: opt["agent-script"],
-      cmd: process.env.DEMODAY_AGENT_CMD || "uv run --project backend python -m app.agent",
+      // cd·작은따옴표 없이 — Windows cmd.exe 에서도 그대로 동작한다(경로는 큰따옴표)
+      cmd: process.env.DEMODAY_AGENT_CMD || `uv run --directory "${fileURLToPath(new URL("../../backend", import.meta.url))}" python -m app.agent`,
     }
   : null;
 main(scenarioPath, runDir, agentArgs).catch((e) => {
