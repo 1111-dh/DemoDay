@@ -35,6 +35,14 @@ scripts/     계약 검증, 타입 생성, e2e
 | `make e2e REPO=… URL=…` | 전체 파이프라인 |
 | `make gen` | 스키마 변경 후 Python/TS 타입 재생성 |
 
+## 웹 영상 회귀 테스트
+
+`make setup` 후 `make e2e-web-video`를 실행합니다. 테스트가 임시 포트에서 웹과 API를 시작하고 종료합니다. 로컬 예제 페이지와 고정된 저장소 분석 자료를 사용하며 `.env`와 API 키는 필요 없습니다. 오프라인에서 실행하려면 Playwright Chromium과 Remotion 브라우저를 미리 설치하세요(`pnpm --filter @demoday/render exec remotion browser ensure`). 렌더러가 사용하는 작업 폴더를 공유하므로 같은 체크아웃에서 다른 영상 렌더와 동시에 실행하지 마세요.
+
+브라우저가 시나리오를 확인하고 원본 영상을 다운로드한 뒤 ‘메인 화면’을 ‘수정한 데모 자막’으로 바꿔 다시 다운로드합니다. 두 MP4에서 화면 장면의 같은 시점을 디코딩하고, 자막 영역의 글자 모양을 별도로 그린 기대 문구와 비교합니다.
+
+매번 출력되는 `runs/video-regression-*/`에 원본·수정본 MP4, 판독 프레임과 기대 글자 이미지가 남습니다. 실패한 경우 `api.log`, `web.log`, 브라우저 오류 당시의 `failure.png` 및 하위 실행 폴더의 `status.json`을 확인하세요. 실패 시점까지 생성된 파일만 남습니다.
+
 ## AI 에이전트 하네스
 
 | | Claude Code | Codex |

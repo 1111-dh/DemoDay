@@ -61,3 +61,7 @@ e2e-render: ## fixture scene.json → runs/fixture/preview.mp4 (렌더만)
 	pnpm --filter @demoday/render render $(CURDIR)/runs/fixture $(CURDIR)/runs/fixture/preview.mp4 --scale=0.5
 
 .PHONY: help setup gen validate gen-check lint typecheck test check dev-api dev-web studio e2e warm e2e-render
+
+.PHONY: e2e-web-video
+e2e-web-video: ## 로컬 웹 UI로 제작·다운로드·자막 재렌더 검증
+	@$(PY) python scripts/video-regression/run.py
