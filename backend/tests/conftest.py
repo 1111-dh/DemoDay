@@ -4,6 +4,26 @@ import pytest
 
 from app.github import RepoSnapshot
 
+# 실제 .env 의 키(app.main 이 load_dotenv 로 읽는다)가 테스트에 새어 들지 않게.
+# 테스트는 필요한 키만 직접 넣는다
+_LLM_ENV = (
+    "LLM_PROVIDER",
+    "BAZE_API_KEY",
+    "BAZE_MODEL",
+    "BAZE_VISION_MODEL",
+    "GROQ_API_KEY",
+    "GROQ_MODEL",
+    "GROQ_FALLBACK_MODEL",
+    "GROQ_VISION_MODEL",
+    "ANTHROPIC_API_KEY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_llm_keys(monkeypatch):
+    for name in _LLM_ENV:
+        monkeypatch.delenv(name, raising=False)
+
 
 def make_snap(
     files: dict[str, str], extra_paths: list[str] | None = None, loader=None
