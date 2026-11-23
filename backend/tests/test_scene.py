@@ -89,13 +89,17 @@ def test_build_scene_writes_file_with_llm_copy(tmp_path):
     assert doc["totalSec"] == sum(x["durationSec"] for x in doc["scenes"]) <= 90
 
 
-def test_build_scene_rejects_bad_copy_then_defaults(tmp_path):
+def test_wrong_caption_count_keeps_copy_and_pads_from_drafts(tmp_path):
+    # 화면 6개에 자막 4개만 오는 일이 잦다 — 문제·해결·정리까지 버리지 않고 모자란 자막만 초안으로
     run = run_dir(tmp_path)
-    wrong_len = SceneCopy(title="T", subtitle="", captions=["a"], weights=[1])
-    llm = FakeLLM(wrong_len, wrong_len, wrong_len)
+    short = SceneCopy(title="T", subtitle="", captions=["a"], weights=[1], problem="정리가 늦어요")
+    llm = FakeLLM(short)
     doc = build_scene(run, 60, False, llm)
-    assert doc["scenes"][0]["text"] == "DemoDay"
-    assert len(llm.users) == 3
+    assert len(llm.users) == 1 and doc["scenes"][0]["text"] == "T"
+    assert doc["scenes"][1]["text"] == "정리가 늦어요"
+    screens = [s for s in doc["scenes"] if s["type"] == "screen"]
+    assert [s.get("caption") for s in screens] == ["a", "검색 기능"]  # 2번째는 시나리오 초안
+    assert "화면 2개" in llm.users[0]
 
 
 def test_build_scene_without_llm(tmp_path):
@@ -316,3 +320,54 @@ def test_card_length_follows_text_length(scenario, capture):
         _copy(problem="임대인이 빈 상가에 맞는 업종을 판단하기 어려워요"),
     )
     assert short["scenes"][1]["durationSec"] < long["scenes"][1]["durationSec"] <= 4
+
+
+def _pt(icon, text):
+    from app.scene import PointDraft
+
+    return PointDraft(icon=icon, text=text)
+
+
+def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래픽 (#34)
+    copy = _copy(
+        problem="회의 정리는 늘 PM 몫이에요",
+        problem_points=[
+            _pt("clock", "회의록 옮기는 데 30분 걸려요"),
+            _pt("alert", "담당자가 흐려져요"),
+        ],
+        solution="회의만 하면 할 일이 정리돼요",
+        solution_points=[
+            _pt("chat", "회의를 듣고 할 일을 찾아요"),
+            _pt("check", "확실한 일은 바로 등록해요"),
+            _pt("bolt", "애매한 것만 물어요"),
+        ],
+    )
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
+    problem, solution = scenes[1], scenes[2]
+    assert problem == {
+        "type": "points",
+        "durationSec": 3.5,  # 1.5초 + 항목당 1초
+        "kicker": "문제",
+        "heading": "회의 정리는 늘 PM 몫이에요",
+        "items": [
+            {"icon": "clock", "text": "회의록 옮기는 데 30분 걸려요"},
+            {"icon": "alert", "text": "담당자가 흐려져요"},
+        ],
+    }
+    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 4.5, 3)
+    assert scenes[3]["type"] == "screen"
+    assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
+
+
+def test_single_point_falls_back_to_title_card(scenario, capture):
+    copy = _copy(problem="정리가 늘 늦어요", problem_points=[_pt("clock", "하나뿐")])
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
+    assert scenes[1]["type"] == "title" and scenes[1]["kicker"] == "문제"
+    assert scenes[2]["type"] == "screen"  # solution 없으면 해결 장면도 없음
+
+
+def test_check_rejects_long_point_text(tmp_path):
+    bad = _copy(solution="한 줄", solution_points=[_pt("check", "가" * 25), _pt("bolt", "짧아요")])
+    llm = FakeLLM(bad, bad, bad)
+    doc = build_scene(run_dir(tmp_path), 60, False, llm)
+    assert len(llm.users) == 3 and all(s["type"] != "points" for s in doc["scenes"])
