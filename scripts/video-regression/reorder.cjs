@@ -86,7 +86,11 @@ async function verify(browser, touch) {
         .getByRole("button", { name: "3번째 장면 순서 변경: 검색" })
         .waitFor();
     }
-    await page.getByRole("button", { name: "영상 만들기" }).click();
+    // A new gesture starts after dnd-kit releases its post-drop click guard.
+    await page.waitForTimeout(250);
+    const buildButton = page.getByRole("button", { name: "영상 만들기" });
+    if (touch) await buildButton.tap();
+    else await buildButton.click();
     await page.locator("progress").waitFor();
     assert.deepEqual(
       saved.steps.map((s) => s.id),
