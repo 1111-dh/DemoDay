@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 import os
 import re
 import time
@@ -33,12 +34,14 @@ from app.llm import (
 
 GROQ_VISION_MODEL = "qwen/qwen3.8-27b"  # Groq 무료 플랜에서 이미지 입력이 되는 모델(11/23 확인)
 MAX_SEEN = 80
+MAX_TOKENS = 4096
 # 캡처 원본 크기 그대로 2x2(2560x1440) — Groq 토큰 추정은 이미지 크기와 무관(11/23 실측)
 TILE = (1280, 720)
 PER_IMAGE = 4
 IMAGES_PER_REQUEST = 3  # Groq qwen 한도 "This model supports up to 3 images"
 PER_REQUEST = PER_IMAGE * IMAGES_PER_REQUEST
 PROMPT = (Path(__file__).parent / "prompts" / "vision.md").read_text()
+log = logging.getLogger(__name__)
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 _LINE = re.compile(r"^\W*(\d{1,2})\W*[:.)]\s*(.+)$")
 
@@ -121,7 +124,9 @@ class GroqVision:
             parts.append({"type": "image_url", "image_url": {"url": url}})
         body = {
             "model": self.model,
-            "max_tokens": 150 * n + 200,
+            # 생각하는 모델(Haiku 5.5)은 답 전에 생각 토큰을 쓴다 — 작게 잡으면 빈 답(11/23).
+            # 크레딧은 실제로 쓴 만큼만 나가니 넉넉히
+            "max_tokens": MAX_TOKENS,
             "messages": [{"role": "user", "content": parts}],
         }
         errors: list[int] = []
@@ -132,9 +137,12 @@ class GroqVision:
             self.down = any(is_down(e) for e in errors)
             return [None] * n
         try:
-            content = res.json()["choices"][0]["message"]["content"] or ""
+            choice = res.json()["choices"][0]
+            content = choice["message"]["content"] or ""
         except (KeyError, IndexError, TypeError, ValueError):
             return [None] * n
+        if not content.strip():
+            log.warning("스크린샷 읽기 빈 답 (finish_reason=%s)", choice.get("finish_reason"))
         return parse_numbered(content, n, start)
 
 
