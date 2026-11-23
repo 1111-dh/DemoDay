@@ -62,7 +62,7 @@ label {
   font-weight: 650;
   margin-bottom: 16px;
 }
-input:not([type="checkbox"]),
+input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   display: block;
@@ -136,4 +136,275 @@ fieldset section {
 }
 fieldset section article {
   margin-bottom: 12px;
+}
+
+@font-face {
+  font-family: Studio;
+  src: url("../../../render/public/fonts/Pretendard-Regular.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: Studio;
+  src: url("../../../render/public/fonts/Pretendard-SemiBold.woff2")
+    format("woff2");
+  font-weight: 600 900;
+  font-display: swap;
+}
+body {
+  font-family: Studio, system-ui, sans-serif;
+}
+header {
+  background: #fff;
+  border-color: #e5e2db;
+  padding: 15px max(5vw, 24px);
+  gap: 12px;
+}
+header i {
+  display: inline-grid;
+  place-items: center;
+  background: #f26b1d;
+  color: white;
+  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  vertical-align: 3px;
+}
+main {
+  max-width: 1000px;
+}
+.intake {
+  max-width: 700px;
+}
+.wide {
+  max-width: 1150px;
+}
+h1 {
+  text-align: center;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.16;
+  margin: 40px 0 28px;
+}
+h2 {
+  font-size: 22px;
+  line-height: 1.3;
+  margin: 0 0 16px;
+  letter-spacing: -0.035em;
+}
+nav {
+  justify-content: center;
+  gap: clamp(12px, 3vw, 35px);
+}
+nav span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 8px;
+}
+nav em {
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid currentColor;
+  border-radius: 100%;
+  width: 20px;
+  height: 20px;
+  text-align: center;
+}
+fieldset,
+section,
+.panel {
+  background: white;
+  border: 1px solid #e4e1da;
+  border-radius: 16px;
+}
+small,
+.meta {
+  display: block;
+  color: #66665f;
+  font-size: 13px;
+  font-weight: 400;
+  margin: 5px 0 10px;
+}
+.presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.presets button {
+  font-size: 13px;
+}
+.presets small {
+  margin: 0 5px 0 0;
+}
+.intake .primary {
+  width: 100%;
+  margin: 8px 0 0;
+}
+button,
+.primary {
+  border-radius: 8px;
+}
+:focus-visible {
+  outline: 3px solid #a54811;
+  outline-offset: 3px;
+}
+button:not(:disabled):hover {
+  border-color: #aa4c18;
+}
+.length {
+  border: 0;
+  padding: 0;
+  margin: 18px 0;
+}
+.length legend {
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+.length label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #d9d6cf;
+  padding: 7px 14px;
+  border-radius: 8px;
+  margin: 0 6px 0 0;
+}
+.length label:has(:checked) {
+  border-color: #c75212;
+  background: #fff4e9;
+}
+input[type="radio"] {
+  accent-color: #b7490f;
+}
+details {
+  padding: 12px 0;
+  border-block: 1px solid #eae8e2;
+}
+summary {
+  margin: 0;
+}
+details[open] summary {
+  margin-bottom: 12px;
+}
+video {
+  border-radius: 10px;
+  aspect-ratio: 16/9;
+}
+.progress {
+  display: flex;
+  gap: 1em;
+  flex-wrap: wrap;
+  padding: 0;
+  list-style: none;
+  color: #67675d;
+}
+.progress [aria-current] {
+  color: #a43f07;
+  font-weight: 700;
+}
+fieldset.editor {
+  padding: 0;
+  border: 0;
+  background: none;
+  display: grid;
+  grid-template-columns: minmax(235px, 0.65fr) minmax(0, 1.35fr);
+  gap: 18px;
+  align-items: start;
+}
+.panel {
+  padding: 20px;
+  min-width: 0;
+}
+.editor section {
+  background: white;
+}
+.scene-row {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  gap: 10px;
+  margin: 7px 0;
+  padding: 8px;
+}
+.scene-row[aria-pressed="true"] {
+  background: #fff4e9;
+  border-color: #c75212;
+}
+.scene-row small {
+  margin: 0;
+}
+.scene-row b {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.still {
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: #eceae4;
+  aspect-ratio: 16/9;
+  width: 78px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 6px;
+  font-size: 10px;
+  text-align: center;
+}
+.still img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.still.large {
+  width: 100%;
+  font-size: 24px;
+  margin: 12px 0 20px;
+}
+.subtitle {
+  position: absolute;
+  bottom: 6%;
+  left: 4%;
+  max-width: 90%;
+  font-size: clamp(12px, 1.25vw, 18px);
+  color: white;
+  background: #171717e0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  overflow-wrap: anywhere;
+}
+.subtitle:empty {
+  display: none;
+}
+.actions {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid #e8e6df;
+  padding-top: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 680px) {
+  main {
+    margin: 24px auto;
+    padding-inline: 14px;
+  }
+  nav span:not([aria-current]) {
+    display: none;
+  }
+  nav span[aria-current]::before {
+    content: "제작 단계";
+  }
+  fieldset.editor {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    padding: 15px;
+  }
+  .length label {
+    padding: 7px 10px;
+  }
 }

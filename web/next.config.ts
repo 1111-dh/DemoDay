@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  experimental: { proxyTimeout: 180_000 },
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

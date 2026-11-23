@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import type { Scenario, Scene, SceneDoc } from "@demoday/contracts";
-import Image from "next/image";
+import type { Scenario, SceneDoc } from "@demoday/contracts";
+import Editor from "./editor";
+import presets from "../../../backend/samples.json";
+
 import videoFixture from "@demoday/contracts/fixtures/scene.video.json";
 import fixture from "@demoday/contracts/fixtures/scene.json";
 
@@ -87,10 +89,13 @@ export default function Home() {
     [error, setError] = useState(""),
     [warning, setWarning] = useState("");
   const [video, setVideo] = useState(""),
-    [busy, setBusy] = useState(false),
-    [arch, setArch] = useState(true);
+    [busy, setBusy] = useState(false);
+  const [repo, setRepo] = useState(""),
+    [url, setUrl] = useState(""),
+    [prompt, setPrompt] = useState("");
   const [totalSec, setTotalSec] = useState(60);
   const [operation, setOperation] = useState<"build" | "scene">("build");
+  const [duration, setDuration] = useState(0);
   const [poll, setPoll] = useState(0);
   const sample = page === 3 && !id;
   const path = "/" + encodeURIComponent(id);
@@ -119,7 +124,12 @@ export default function Home() {
           setError(data.error || "영상 제작에 실패했습니다.");
           return;
         }
-        if (data.stage === "done" && data.scene && data.videoUrl) {
+        if (data.stage === "done") {
+          if (!data.scene || !data.videoUrl) {
+            setStage("offline");
+            setError("제작은 끝났지만 결과 파일을 불러올 수 없습니다.");
+            return;
+          }
           setScene(data.scene);
           setVideo(
             data.videoUrl +
@@ -177,33 +187,23 @@ export default function Home() {
       setPage(1);
     });
   }
-  async function produce(kind: "build" | "scene") {
+  async function produce(kind: "build" | "scene", edited = scene) {
     if (kind === "build") {
       await request(path + "/scenario", "PUT", scenario);
       await request(path + "/build", "POST", {
-        includeArchitecture: arch,
         totalSec,
       });
     } else {
-      await request(path + "/scene", "PUT", scene);
+      await request(path + "/scene", "PUT", edited);
     }
+    if (edited) setScene(edited);
     setOperation(kind);
     setWarning("");
+    setDuration(0);
     setVideo("");
     setStage("queued");
     setPage(2);
     setPoll((n) => n + 1);
-  }
-  function changeScenes(next: Scene[]) {
-    if (scene)
-      setScene({
-        ...scene,
-        scenes: next as SceneDoc["scenes"],
-        totalSec: next.reduce((sum, s) => sum + s.durationSec, 0),
-      });
-  }
-  function patchScene(i: number, next: Scene) {
-    if (scene) changeScenes(scene.scenes.map((s, j) => (j === i ? next : s)));
   }
   return (
     <>
@@ -213,15 +213,24 @@ export default function Home() {
         </strong>
         <span>영상 스튜디오</span>
       </header>
-      <main>
+      <main className={page === 3 ? "wide" : page === 0 ? "intake" : ""}>
         <nav aria-label="제작 단계">
           {titles.map((t, i) => (
             <span key={t} aria-current={page === i ? "step" : undefined}>
-              {t}
+              <em>{i + 1}</em> {t}
             </span>
           ))}
         </nav>
-        <h1>{titles[page]}</h1>
+        <h1>
+          {
+            [
+              "어떤 프로젝트를 시연할까요?",
+              "이 순서로 촬영할까요?",
+              stage === "done" ? "영상이 완성됐어요" : "영상 미리보기",
+              "장면 수정",
+            ][page]
+          }
+        </h1>
         {error && (
           <p className="alert" role="alert">
             {error}
@@ -230,14 +239,34 @@ export default function Home() {
         {page === 0 && (
           <form onSubmit={create}>
             <fieldset disabled={busy}>
+              <div className="presets">
+                <small>예시로 채우기</small>
+                {presets.map((p, i) => (
+                  <button
+                    key={p.repo}
+                    type="button"
+                    onClick={() => {
+                      setRepo(p.repo);
+                      setUrl(p.url);
+                      setPrompt(p.prompt || "");
+                      setError("");
+                    }}
+                  >
+                    {i === 0 ? "채움 예시" : "Nuxt Movies 예시"}
+                  </button>
+                ))}
+              </div>
               <label>
                 GitHub 저장소 URL
                 <input
                   required
                   type="url"
                   name="repo"
+                  value={repo}
+                  onChange={(e) => setRepo(e.target.value)}
                   placeholder="https://github.com/team/project"
                 />
+                <small>저장소를 분석해 시연할 화면과 기능을 찾습니다.</small>
               </label>
               <label>
                 배포 URL
@@ -245,19 +274,28 @@ export default function Home() {
                   required
                   type="url"
                   name="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://project.example.com"
                 />
+                <small>이 주소에서 실제 서비스 화면을 촬영합니다.</small>
               </label>
-              <label>
-                최대 발표 시간
-                <select name="seconds">
-                  {[60, 90, 180].map((n) => (
-                    <option key={n} value={n}>
-                      {n}초
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <fieldset className="length">
+                <legend>최대 영상 길이</legend>
+                {[60, 90, 180].map((n) => (
+                  <label key={n}>
+                    <input
+                      type="radio"
+                      name="seconds"
+                      value={n}
+                      checked={totalSec === n}
+                      onChange={() => setTotalSec(n)}
+                    />
+                    {n}초
+                  </label>
+                ))}
+                <small>실제 영상은 내용에 따라 더 짧아질 수 있어요.</small>
+              </fieldset>
               <details>
                 <summary>테스트 계정 및 제작 요청 (선택)</summary>
                 <label>
@@ -278,7 +316,13 @@ export default function Home() {
                 </label>
                 <label>
                   영상에 바라는 점
-                  <textarea maxLength={500} name="prompt" rows={3} />
+                  <textarea
+                    maxLength={500}
+                    name="prompt"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={3}
+                  />
                 </label>
               </details>
               <button className="primary">
@@ -288,6 +332,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    setId("");
                     setScene(structuredClone(fixture) as SceneDoc);
                     setError("");
                     setPage(3);
@@ -301,11 +346,15 @@ export default function Home() {
         )}
         {page === 1 && scenario && (
           <fieldset disabled={busy}>
-            <p>영상에 담을 단계를 순서대로 배치하세요.</p>
+            <div className="meta">
+              {repo.replace("https://github.com/", "")} · 최대 {totalSec}초
+            </div>
+            <h2>촬영 순서</h2>
             {scenario.steps.map((s, i) => (
               <article key={s.id}>
                 <b>
                   {i + 1}. {s.caption}
+                  <small>{s.path}</small>
                 </b>
                 <div>
                   <Order
@@ -334,20 +383,15 @@ export default function Home() {
                 </div>
               </article>
             ))}
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={arch}
-                onChange={(e) => setArch(e.target.checked)}
-              />
-              아키텍처 장면 포함
-            </label>
+
             <button
               className="primary"
               onClick={() => act(() => produce("build"))}
             >
               {busy ? "요청 중…" : "영상 만들기"}
             </button>
+            <button onClick={() => setPage(0)}>프로젝트 정보 수정</button>
+            <small>제작에는 보통 1~3분이 걸립니다.</small>
           </fieldset>
         )}
         {page === 2 && (
@@ -355,7 +399,22 @@ export default function Home() {
             {warning && <p className="alert">{warning}</p>}
             {stage === "done" && video ? (
               <>
-                <video controls src={video} />
+                <h2>{repo.replace("https://github.com/", "")}</h2>
+                <small>
+                  프로젝트 데모 영상
+                  {duration > 0 &&
+                    " · " +
+                      Math.floor(duration / 60) +
+                      ":" +
+                      String(Math.floor(duration % 60)).padStart(2, "0")}
+                </small>
+                <video
+                  controls
+                  src={video}
+                  onLoadedMetadata={(e) =>
+                    setDuration(e.currentTarget.duration)
+                  }
+                />
                 <a className="primary" href={video} download="DemoDay.mp4">
                   MP4 다운로드
                 </a>
@@ -378,108 +437,38 @@ export default function Home() {
             ) : (
               <>
                 <h2>{stages[stage] || "제작 상태 확인 중"}</h2>
+                <ol className="progress">
+                  {Object.entries(stages).map(([key, label]) => (
+                    <li
+                      key={key}
+                      aria-current={key === stage ? "step" : undefined}
+                    >
+                      {label}
+                    </li>
+                  ))}
+                </ol>
                 <progress />
                 <p>영상 제작에는 보통 1~3분이 걸립니다.</p>
               </>
             )}
           </section>
         )}
-        {page === 3 && scene && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void act(() => produce("scene"));
-            }}
+        {sample && (
+          <button
+            onClick={() => setScene(structuredClone(videoFixture) as SceneDoc)}
           >
-            <fieldset disabled={busy}>
-              {sample && (
-                <p>
-                  샘플 장면 편집{" "}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setScene(structuredClone(videoFixture) as SceneDoc)
-                    }
-                  >
-                    녹화 샘플 불러오기
-                  </button>
-                </p>
-              )}
-              {scene.scenes.map((s, i) => (
-                <section key={i}>
-                  <article>
-                    <b>
-                      {i + 1}.{" "}
-                      {
-                        {
-                          title: "제목",
-                          screen: "화면 캡처",
-                          architecture: "아키텍처",
-                          points: "핵심 포인트",
-                        }[s.type]
-                      }
-                    </b>
-                    <Order
-                      index={i}
-                      count={scene.scenes.length}
-                      move={(d) => changeScenes(moved(scene.scenes, i, d))}
-                    />
-                  </article>
-                  {s.type === "screen" && !sample && (
-                    <Image
-                      unoptimized
-                      src={"/api/runs" + path + "/files/" + s.image}
-                      alt={"장면 " + (i + 1) + " 미리보기"}
-                      width={160}
-                      height={90}
-                    />
-                  )}
-                  <label>
-                    길이 (초)
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      required
-                      value={s.durationSec || ""}
-                      onChange={(e) =>
-                        patchScene(i, {
-                          ...s,
-                          durationSec: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  {(s.type === "screen" || s.type === "title") && (
-                    <label>
-                      자막
-                      <input
-                        maxLength={160}
-                        value={(s.type === "screen" ? s.caption : s.text) || ""}
-                        onChange={(e) =>
-                          patchScene(
-                            i,
-                            s.type === "screen"
-                              ? { ...s, caption: e.target.value }
-                              : { ...s, text: e.target.value },
-                          )
-                        }
-                      />
-                    </label>
-                  )}
-                </section>
-              ))}
-              {sample ? (
-                <button type="button" onClick={() => setPage(0)}>
-                  입력으로 돌아가기
-                </button>
-              ) : (
-                <button className="primary">
-                  {busy ? "저장 중…" : "저장하고 다시 렌더링"}
-                </button>
-              )}
-            </fieldset>
-          </form>
+            녹화 샘플 불러오기
+          </button>
+        )}
+        {page === 3 && scene && (
+          <Editor
+            key={sample ? JSON.stringify(scene) : id}
+            initial={scene}
+            busy={busy}
+            files={sample ? "" : "/api/runs" + path + "/files/"}
+            back={() => setPage(sample ? 0 : 2)}
+            save={(doc) => act(() => produce("scene", doc))}
+          />
         )}
       </main>
     </>
