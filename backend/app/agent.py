@@ -74,8 +74,8 @@ def _problem(a: AgentAction, elements: dict[int, dict], clicked: set[str]) -> st
     if a.action in ("click", "type") and a.id not in elements:
         return f"id {a.id}는 후보 목록에 없다"
     # 같은 요소를 다시 누르면 같은 장면이 반복된다. 번호는 화면마다 새로 매겨지니 이름으로 본다
-    if a.action == "click" and (name := elements[a.id].get("name")) in clicked:
-        return f"'{name}'은 이미 눌렀다 — 아직 보여주지 않은 기능을 골라라"
+    if a.action in ("click", "type") and (name := elements[a.id].get("name")) in clicked:
+        return f"'{name}'은 이미 썼다 — 아직 보여주지 않은 기능을 골라라"
     if a.action == "type":
         if elements[a.id]["role"] not in INPUT_ROLES:
             return f"id {a.id}({elements[a.id]['role']})는 입력칸이 아니다"
@@ -168,7 +168,7 @@ class Decider:
             if a is None:
                 return DONE
             if (err := _problem(a, by_id, self.clicked)) is None:
-                if a.action == "click":
+                if a.action in ("click", "type"):  # 같은 입력칸에 두 번 입력하는 것도 반복이다
                     self.clicked.add(by_id[a.id].get("name") or "")
                 return _clean(a)
             prompt = f"{text}\n\n이전 답 {a.model_dump_json()}은 틀렸다: {err}. 다시 골라라."

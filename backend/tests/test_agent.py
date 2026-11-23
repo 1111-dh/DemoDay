@@ -123,3 +123,12 @@ def test_repeat_of_done_action_is_rejected(tmp_path):  # cs-pathfinder: '오늘�
     d = _decider(_run(tmp_path), [click, click, other])
     assert d.decide(OBS)["action"] == "click"
     assert d.decide({**OBS, "step": 2})["action"] == "type"  # 같은 이름은 다시 안 누른다
+
+
+def test_same_field_is_not_typed_twice(tmp_path):  # cs-pathfinder: '데드락' 다음 '교착상태'
+    first = '{"action": "type", "id": 1, "value": "데드락", "caption": "용어를 찾아요"}'
+    again = '{"action": "type", "id": 1, "value": "교착상태", "caption": "또 찾아요"}'
+    other = '{"action": "click", "id": 3, "value": "", "caption": "질문 지도를 열어요"}'
+    d = _decider(_run(tmp_path), [first, again, other])
+    assert d.decide(OBS)["action"] == "type"
+    assert d.decide({**OBS, "step": 2})["action"] == "click"
