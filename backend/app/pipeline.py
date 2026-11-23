@@ -106,12 +106,15 @@ SITE_DOWN = "배포 주소에 접속하지 못했어요(모든 페이지 이동 
 
 
 def _site_alive(url: str) -> bool:
-    """배포 주소가 응답하는지(2xx·3xx). 연결 실패·4xx·5xx(Vercel 404 등)면 False."""
+    """배포 주소가 응답하는지. 연결 실패·404·410·5xx(Vercel DEPLOYMENT_NOT_FOUND 등)면 False.
+
+    401·403·429(로그인 필요·봇 차단)는 서버가 살아 있다는 뜻이라 True — 화면을 버리지 않는다.
+    """
     try:
         res = httpx.get(url, timeout=10, follow_redirects=True)
-    except httpx.HTTPError:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError):
         return False
-    return res.status_code < 400
+    return not (res.status_code in (404, 410) or res.status_code >= 500)
 
 
 def _site_unreachable(d: Path) -> bool:
