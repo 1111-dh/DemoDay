@@ -28,8 +28,12 @@ const VIDEO_FILE = "capture.webm";
 /** 렌더 ScreenScene: 0.1~0.8초 커서 이동, 0.8초 클릭. 바꾸면 둘 다 바꾼다. */
 const CURSOR_FROM_MS = 100;
 const CLICK_AT_MS = 800;
-/** 기준점 오차를 덮는 clip 앞뒤 여유 (click 앞쪽은 박자를 지키려고 두지 않는다) */
+/** 기준점 오차를 덮는 clip 앞 여유 (click은 박자를 지키려고 두지 않는다). 앞 clip과는 겹치지 않게 자른다 */
 const CLIP_PAD_MS = 300;
+/** 단계 뒤 결과 화면을 이만큼 더 녹화해 clip에 넣는다 — 장면이 늘어나도 0.5배속·정지가 덜 생긴다 */
+const HOLD_MS = 1500;
+/** 스크린샷이 끝내 실패한 단계에 쓰는 1x1 회색 PNG(렌더가 1280x720로 늘린다). 파일이 없으면 렌더가 깨진다 */
+const BLANK_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4/OkdAAWvAtR7z8HDAAAAAElFTkSuQmCC", "base64");
 const TYPE_DELAY_MS = 60;
 
 type Step = Scenario["steps"][number];
@@ -90,7 +94,9 @@ async function run(c: Ctx, step: Step): Promise<Result> {
     case "goto": {
       // new URL(path, base)는 base의 하위 경로(/repo/)를 버리므로 문자열로 이어 붙인다. 해시(/#/x)·쿼리도 그대로.
       const path = step.path!.startsWith("/") ? step.path! : `/${step.path}`;
-      await page.goto(c.baseUrl.replace(/\/+$/, "") + path, { waitUntil: "load" });
+      const res = await page.goto(c.baseUrl.replace(/\/+$/, "") + path, { waitUntil: "load" });
+      // 없는 페이지(404 등)는 정상 장면처럼 들어가지 않게 fallback으로. 메시지에 URL은 넣지 않는다(auth secret)
+      if (res && res.status() >= 400) throw new Error(`HTTP ${res.status()}`);
       await enableFlutterSemantics(page);
       return { click: null };
     }
@@ -153,43 +159,54 @@ async function login(browser: Browser, scenario: Scenario): Promise<Auth> {
     page.setDefaultTimeout(STEP_TIMEOUT);
     page.setDefaultNavigationTimeout(STEP_TIMEOUT * 3);
     const c: Ctx = { page, baseUrl: scenario.baseUrl, shotPath: null, mouse: { x: 0, y: 0 } };
-    for (const step of scenario.auth!.steps) {
+    const steps = scenario.auth!.steps;
+    const lastClick = steps.map((s) => s.action).lastIndexOf("click");
+    for (const [i, step] of steps.entries()) {
+      const before = page.url();
       await run(c, step).catch(() => console.warn(`! auth step ${step.id} (${step.action}) 실패 — 건너뜀`));
+      // 로그인 버튼 뒤: 응답 전에 상태를 꺼내거나 컨텍스트를 닫으면 로그인 요청이 끊긴다 → 페이지가 넘어갈 때까지 기다린다
+      if (i === lastClick) await page.waitForURL((u) => u.href !== before, { timeout: 8000 }).catch(() => {});
     }
     await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
     const session = (await page
       .evaluate("({ origin: location.origin, items: Object.fromEntries(Object.entries(sessionStorage)) })")
       .catch(() => null)) as Auth["session"];
-    return { storageState: await ctx.storageState(), session };
+    // indexedDB: Firebase Auth(JS·Flutter firebase_auth) 등은 토큰을 IndexedDB에 둔다(기본값은 빠짐)
+    return { storageState: await ctx.storageState({ indexedDB: true }), session };
   } finally {
     await ctx.close();
   }
 }
 
-/** 녹화 컨텍스트. 만들 수 없으면 녹화 없는 컨텍스트로 대체한다. */
-async function recordingContext(browser: Browser, auth: Auth | null, videoDir: string) {
+/**
+ * 녹화 컨텍스트와 페이지. 녹화는 페이지를 만들 때 시작하므로(ffmpeg가 없으면 여기서 실패) newPage까지 시도하고,
+ * 실패하면 녹화 없는 컨텍스트로 대체한다.
+ */
+async function recordingPage(browser: Browser, auth: Auth | null, videoDir: string) {
   const base = { viewport: { width: VIEWPORT.w, height: VIEWPORT.h }, storageState: auth?.storageState };
-  let ctx: BrowserContext;
-  let recording = true;
-  try {
-    ctx = await browser.newContext({
-      ...base,
-      recordVideo: { dir: videoDir, size: { width: VIEWPORT.w, height: VIEWPORT.h } },
-    });
-  } catch (e) {
-    console.warn(`! 녹화 컨텍스트 실패 — 정지 화면만: ${msg(e)}`);
-    ctx = await browser.newContext(base);
-    recording = false;
-  }
-  if (auth?.session && Object.keys(auth.session.items).length) {
-    // sessionStorage는 storageState에 안 들어간다. 같은 origin에서 비어 있는 키만 복원(앱이 바꾼 값은 덮지 않음)
-    const s = JSON.stringify(auth.session);
-    await ctx.addInitScript({
-      content: `(() => { const s = ${s}; if (location.origin !== s.origin) return;
-        for (const [k, v] of Object.entries(s.items)) if (sessionStorage.getItem(k) === null) sessionStorage.setItem(k, v); })();`,
-    });
-  }
-  return { ctx, recording };
+  const open = async (record: boolean) => {
+    const ctx: BrowserContext = await browser.newContext(
+      record ? { ...base, recordVideo: { dir: videoDir, size: { width: VIEWPORT.w, height: VIEWPORT.h } } } : base,
+    );
+    try {
+      if (auth?.session && Object.keys(auth.session.items).length) {
+        // sessionStorage는 storageState에 안 들어간다. 같은 origin에서 비어 있는 키만 복원(앱이 바꾼 값은 덮지 않음)
+        const s = JSON.stringify(auth.session);
+        await ctx.addInitScript({
+          content: `(() => { const s = ${s}; if (location.origin !== s.origin) return;
+            for (const [k, v] of Object.entries(s.items)) if (sessionStorage.getItem(k) === null) sessionStorage.setItem(k, v); })();`,
+        });
+      }
+      return { ctx, page: await ctx.newPage(), recording: record };
+    } catch (e) {
+      await ctx.close().catch(() => {});
+      throw e;
+    }
+  };
+  return open(true).catch((e) => {
+    console.warn(`! 녹화 시작 실패 — 정지 화면만: ${msg(e)}`);
+    return open(false);
+  });
 }
 
 async function main(scenarioPath: string, runDir: string) {
@@ -204,14 +221,14 @@ async function main(scenarioPath: string, runDir: string) {
     const auth = scenario.auth
       ? await login(browser, scenario).catch(() => (console.warn("! 로그인 컨텍스트 실패 — 로그인 없이 진행"), null))
       : null;
-    const { ctx, recording } = await recordingContext(browser, auth, videoDir);
-    const page = await ctx.newPage();
+    const { ctx, page, recording } = await recordingPage(browser, auth, videoDir);
     const t0 = Date.now(); // 녹화 기준점(≈ 영상 0초). atMs·clip 모두 이 기준
     page.setDefaultTimeout(STEP_TIMEOUT);
     page.setDefaultNavigationTimeout(STEP_TIMEOUT * 3); // 첫 로딩(콜드 스타트)은 여유를 더 준다
     // 렌더 커서의 출발점과 같게
     const c: Ctx = { page, baseUrl: scenario.baseUrl, shotPath: null, mouse: { x: VIEWPORT.w * 0.62, y: VIEWPORT.h * 0.78 } };
 
+    let prevEnd = 0; // 앞 clip 끝(ms)
     for (const step of scenario.steps) {
       const image = `shots/${step.id}.png`;
       c.shotPath = join(runDir, image);
@@ -223,22 +240,32 @@ async function main(scenarioPath: string, runDir: string) {
         taken = r.taken ?? false;
         // 클릭·이동 후 화면이 안정될 때까지 잠깐 기다린다(실패해도 무시)
         await page.waitForLoadState("networkidle", { timeout: 2000 }).catch(() => {});
-        const end = Date.now();
-        shot = { stepId: step.id, image, click: r.click, status: "ok", atMs: end - t0 };
+        shot = { stepId: step.id, image, click: r.click, status: "ok", atMs: Date.now() - t0 };
         if (recording) {
-          const startMs = r.clipStart !== undefined ? r.clipStart - t0 : Math.max(0, stepStart - t0 - CLIP_PAD_MS);
-          shot.clip = { startMs, endMs: end - t0 + CLIP_PAD_MS };
+          await sleep(HOLD_MS); // 결과 화면을 더 녹화
+          // 앞 clip 끝과 겹치지 않게(겹치면 장면이 바뀔 때 앞 장면 끝이 되감겨 보인다)
+          const startMs = r.clipStart !== undefined ? r.clipStart - t0 : Math.max(prevEnd, stepStart - t0 - CLIP_PAD_MS);
+          shot.clip = { startMs, endMs: Date.now() - t0 };
+          prevEnd = shot.clip.endMs;
         }
       } catch (e) {
         console.warn(`! step ${step.id} (${step.action}) fallback: ${msg(e)}`);
         shot = { stepId: step.id, image, click: null, status: "fallback", atMs: Date.now() - t0 };
       }
-      if (!taken) await snap(page, c.shotPath);
+      if (!taken) {
+        // 페이지가 응답하지 않아 찍지 못해도 멈추지 않는다 — 빈 화면을 쓰고 fallback
+        const atMs = shot.atMs;
+        await snap(page, c.shotPath).catch(async (e) => {
+          console.warn(`! step ${step.id} 스크린샷 실패 — 빈 화면: ${msg(e)}`);
+          await writeFile(c.shotPath!, BLANK_PNG);
+          shot = { stepId: step.id, image, click: null, status: "fallback", atMs };
+        });
+      }
       shots.push(shot);
       console.log(`${shot.status === "ok" ? "✓" : "!"} ${image}`);
     }
 
-    await sleep(CLIP_PAD_MS); // 마지막 clip의 뒤 여유만큼 더 녹화
+    await sleep(CLIP_PAD_MS); // 기준점 오차만큼 더 녹화해 마지막 clip 끝이 영상 안에 들어가게
     const rec = page.video();
     await ctx.close(); // 녹화 파일은 컨텍스트를 닫아야 완성된다
     if (recording && rec) {
