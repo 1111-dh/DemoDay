@@ -14,7 +14,8 @@ import type { Scenario } from "@demoday/contracts";
 
 type Step = Scenario["steps"][number];
 type Box = { x: number; y: number; w: number; h: number };
-export type UiElement = { id: number; role: string; name: string; box: Box };
+/** css: 입력칸이면 다시 찾을 속성 셀렉터(#id·[name]·[placeholder]) — scenario.json 기록용, 에이전트에는 안 보낸다 */
+export type UiElement = { id: number; role: string; name: string; box: Box; css?: string };
 export type Action = { action: "click" | "type" | "scroll" | "done"; id?: number; value?: string; caption?: string };
 type History = { action: string; id?: number; value?: string; caption?: string; ok: boolean };
 type Observation = { goal: string; step: number; url: string; screenshot: string; elements: UiElement[]; history: History[] };
@@ -23,6 +24,7 @@ export const MAX_AGENT_STEPS = 10;
 const MAX_ELEMENTS = 60;
 const DECIDE_TIMEOUT_MS = 60_000;
 const ATTR = "data-demoday-id";
+const TEXT_ROLES = ["textbox", "searchbox", "combobox"];
 const LOGIN_PATH = /\/(login|signin|sign-in)\b/i;
 
 /**
@@ -47,12 +49,23 @@ export async function elements(page: Page): Promise<UiElement[]> {
           if (tag === "a") return "link";
           if (tag === "textarea" || e.getAttribute("contenteditable") === "true") return "textbox";
           if (tag === "select") return "combobox";
-          if (tag === "input") return ["checkbox", "radio"].includes(type) ? type : ["submit", "button"].includes(type) ? "button" : "textbox";
+          if (tag === "input") {
+            if (["checkbox", "radio"].includes(type)) return type;
+            if (["submit", "button", "reset", "image"].includes(type)) return "button";
+            return type === "search" ? "searchbox" : "textbox";
+          }
           return "button";
         };
+        // 접근성 이름 순서(aria-label → aria-labelledby → <label> → 내용 → placeholder …)를 대충 따른다
         const nameOf = (e: HTMLElement) =>
           (
             e.getAttribute("aria-label") ||
+            (e.getAttribute("aria-labelledby") || "")
+              .split(/\s+/)
+              .map((id) => document.getElementById(id)?.innerText || "")
+              .join(" ")
+              .trim() ||
+            (e as HTMLInputElement).labels?.[0]?.innerText ||
             e.innerText ||
             e.getAttribute("placeholder") ||
             e.getAttribute("title") ||
@@ -64,7 +77,18 @@ export async function elements(page: Page): Promise<UiElement[]> {
             .trim()
             .slice(0, 40);
         const seen = new Set<Element>();
-        const out: { el: HTMLElement; role: string; name: string; box: { x: number; y: number; w: number; h: number } }[] = [];
+        // 입력칸은 이름보다 속성이 안정적이다(접근성 이름이 label·placeholder 중 무엇인지 사이트마다 다름)
+        const cssOf = (e: HTMLElement) => {
+          const tag = e.tagName.toLowerCase();
+          if (!["input", "textarea", "select"].includes(tag)) return undefined;
+          const q = (v: string) => JSON.stringify(v);
+          if (e.id && /^[A-Za-z][\w-]*$/.test(e.id)) return `#${e.id}`;
+          const n = e.getAttribute("name");
+          if (n) return `${tag}[name=${q(n)}]`;
+          const ph = e.getAttribute("placeholder");
+          return ph ? `${tag}[placeholder=${q(ph)}]` : undefined;
+        };
+        const out: { el: HTMLElement; role: string; name: string; css?: string; box: { x: number; y: number; w: number; h: number } }[] = [];
         for (const e of document.querySelectorAll<HTMLElement>(sel)) {
           // 안쪽 요소가 같은 컨트롤의 일부면(버튼 안의 span 등) 바깥 것 하나만
           if ([...seen].some((s) => s.contains(e))) continue;
@@ -78,12 +102,12 @@ export async function elements(page: Page): Promise<UiElement[]> {
           const top = document.elementFromPoint(cx, cy);
           if (!top || !(e === top || e.contains(top) || (top as HTMLElement).closest?.("label")?.contains(e))) continue;
           seen.add(e);
-          out.push({ el: e, role: roleOf(e), name: nameOf(e), box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } });
+          out.push({ el: e, role: roleOf(e), name: nameOf(e), css: cssOf(e), box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } });
         }
         out.sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
         return out.slice(0, max).map((o, i) => {
           o.el.setAttribute(attr, String(i + 1));
-          return { id: i + 1, role: o.role, name: o.name, box: o.box };
+          return { id: i + 1, role: o.role, name: o.name, box: o.box, ...(o.css && { css: o.css }) };
         });
       },
       { attr: ATTR, max: MAX_ELEMENTS },
@@ -93,12 +117,20 @@ export async function elements(page: Page): Promise<UiElement[]> {
 
 /** scenario.json 에 남길 안정적인 셀렉터. 실행은 data-demoday-id 로 하고, 기록은 다시 돌려도 찾을 수 있는 이름 기반으로. */
 export function stableSelector(e: UiElement): string {
-  // 화살표·꺾쇠 같은 장식 기호는 접근성 이름에 안 들어가는 경우가 많다(아이콘) — 빼고 앞부분만(이름은 부분 일치)
-  const name = e.name.replace(/[←-⇿➔-➿›»<>]/g, "").trim().slice(0, 30).trim().replace(/"/g, '\\"');
-  if (name && ["button", "link", "textbox", "searchbox", "combobox", "tab", "menuitem", "checkbox", "radio"].includes(e.role)) {
-    return `role=${e.role}[name="${name}"]`;
+  if (e.css) return `${e.css} >> visible=true >> nth=0`;
+  const name = e.name.trim();
+  if (!name) return `[${ATTR}="${e.id}"]`;
+  if (["button", "link", "textbox", "searchbox", "combobox", "tab", "menuitem", "checkbox", "radio"].includes(e.role)) {
+    // role= 의 name="…"은 정확히 일치라, 관찰 이름(innerText, 40자에서 잘림)과 접근성 이름의 공백 차이("→ 개념" vs "→개념")에 깨진다.
+    // 앞부분 정규식으로 맞추고 공백·장식 기호(aria-hidden 화살표 등)는 있어도 없어도 되게. 숨은 같은 이름(모바일 메뉴 등)이 있으면 보이는 첫 번째
+    const re = name
+      .replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")
+      .replace(/[←-⇿➔-➿›»]/g, "$&?")
+      .split(/\s+/)
+      .join("\\s*");
+    return `role=${e.role}[name=/^\\s*${re}/] >> visible=true >> nth=0`;
   }
-  return name ? `text=${name}` : `[${ATTR}="${e.id}"]`;
+  return `text=${name.replace(/"/g, '\\"')} >> visible=true >> nth=0`;
 }
 
 /** 동작 형식 검사. 틀리면 null(건너뛰고 history 에 ok:false). */
@@ -127,8 +159,8 @@ async function scriptDecider(file: string): Promise<Decider> {
       const a = actions[i++] ?? { action: "done" };
       if (typeof a.name !== "string" || a.id !== undefined) return a;
       const hits = obs.elements.filter((e) => e.name.includes(a.name as string));
-      const want = a.action === "type" ? ["textbox", "searchbox", "combobox"] : ["button", "link", "tab", "menuitem"];
-      const hit = hits.find((e) => want.includes(e.role)) ?? hits[0];
+      const want = a.action === "type" ? TEXT_ROLES : ["button", "link", "tab", "menuitem"];
+      const hit = hits.find((e) => want.includes(e.role)) ?? (a.action === "type" ? undefined : hits[0]);
       return { ...a, id: hit?.id ?? -1 };
     },
     close: () => {},
@@ -215,7 +247,7 @@ export async function* agentSteps(o: AgentOptions, executed: Step[]): AsyncGener
       const els = await elements(o.page);
       const shot = `agent/${n}.png`;
       await o.snap(o.page, join(o.runDir, shot)).catch(() => {});
-      const obs: Observation = { goal: o.goal, step: n, url: url.pathname + url.search + url.hash, screenshot: shot, elements: els, history };
+      const obs: Observation = { goal: o.goal, step: n, url: url.pathname + url.search + url.hash, screenshot: shot, elements: els.map(({ css: _, ...e }) => e), history };
       // 관찰을 남겨 둔다 — 디버깅과 A의 오프라인 개발(저장된 관찰로 판단 로직 테스트)용
       await writeFile(join(o.runDir, `agent/${n}.json`), JSON.stringify(obs, null, 2)).catch(() => {});
       let raw: unknown;
@@ -233,6 +265,11 @@ export async function* agentSteps(o: AgentOptions, executed: Step[]): AsyncGener
       }
       if (a.action === "done") break;
       const el = els.find((e) => e.id === a.id);
+      // 입력은 입력칸에만 — 링크·버튼에 type 하면 실패만 녹화된다
+      if (a.action === "type" && !TEXT_ROLES.includes(el!.role)) {
+        history.push({ action: "invalid", id: a.id, ok: false });
+        continue;
+      }
       // 같은 화면에서 같은 동작을 반복하면 막힌 것 — 멈춘다
       const key = `${obs.url}|${a.action}|${el?.name ?? ""}|${a.value ?? ""}`;
       repeats.set(key, (repeats.get(key) ?? 0) + 1);
