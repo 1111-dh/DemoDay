@@ -28,7 +28,7 @@ stage analyze "$RUN/scenario.json" \
 AGENT_ARGS=()
 if [ "${CAPTURE_MODE:-}" = agent ]; then
   GOAL=$(cd "$ROOT/backend" && uv run python -m app.cli goal --run "$RUN")
-  export DEMODAY_RUN_DIR="$RUN" DEMODAY_AGENT_CMD="cd '$ROOT/backend' && uv run python -m app.agent"
+  export DEMODAY_RUN_DIR="$RUN"  # 에이전트 명령은 캡처 기본값(Windows 호환, #70)
   AGENT_ARGS=(--agent --goal "$GOAL")
   echo "  에이전트 목표: $GOAL"
 fi
