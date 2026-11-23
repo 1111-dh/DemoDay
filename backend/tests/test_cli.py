@@ -136,3 +136,18 @@ def test_warm_passes_sample_prompt(monkeypatch, tmp_path):  # 시연 때 쓸 프
     monkeypatch.setattr(scenario, "analyze", fake)
     cli.main(["warm", "--file", str(tmp_path / "samples.json")])
     assert seen["prompt"] == "예시 리포트 위주"
+
+
+def test_cli_scene_architecture_is_opt_in(monkeypatch, tmp_path):
+    import app.scene
+
+    seen = []
+    monkeypatch.setattr(llm, "get_llm", lambda: None)
+    monkeypatch.setattr(
+        app.scene,
+        "build_scene",
+        lambda run, sec, arch, _llm, **kw: seen.append(arch) or {"scenes": []},
+    )
+    cli.main(["scene", "--run", str(tmp_path)])
+    cli.main(["scene", "--run", str(tmp_path), "--architecture"])
+    assert seen == [False, True]

@@ -332,3 +332,13 @@ def test_capture_warning_includes_detail_line(client, monkeypatch):
 def test_create_run_empty_login_is_422(client):
     assert _post(client, login={"username": "", "password": "p"}).status_code == 422
     assert _post(client, login={"username": "u", "password": ""}).status_code == 422
+
+
+def test_architecture_scene_is_off_by_default(client, monkeypatch):  # 임시 뼈대 장면이라 기본 끔
+    from app import pipeline
+
+    seen = []
+    monkeypatch.setattr(pipeline, "build", lambda rid, total, arch: seen.append(arch))
+    client.post(f"/api/runs/{create(client)['id']}/build", json={})
+    client.post(f"/api/runs/{create(client)['id']}/build", json={"includeArchitecture": True})
+    assert seen == [False, True]

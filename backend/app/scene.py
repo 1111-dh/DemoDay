@@ -190,6 +190,8 @@ def _user_message(
         }
         if seen and i < len(seen) and seen[i]:
             screen["seen"] = seen[i]  # 스크린샷에 실제로 보이는 내용(이미지 모델)
+            # 시나리오 초안 자막은 화면을 보지 않고 쓴 추측 — 있으면 LLM이 그대로 베낀다(11/23)
+            screen["step"] = {k: v for k, v in screen["step"].items() if k != "caption"}
         screens.append(screen)
     data = {
         "name": facts.name,
@@ -254,6 +256,8 @@ def build_scene(
     copy = None
     if llm is not None:
         seen = describe_shots(run_dir, shots, describer) if describer else None
+        if seen is not None:  # 자막 점검용 — 화면마다 이미지 모델이 읽은 내용
+            (run_dir / "seen.json").write_text(json.dumps(seen, ensure_ascii=False, indent=2))
         user = _user_message(scenario, shots, facts, prompt, seen)
         copy = generate(llm, system=SYSTEM, user=user, output=SceneCopy, check=check)
     doc = assemble(scenario, shots, facts, total_sec, include_architecture, copy, **media)

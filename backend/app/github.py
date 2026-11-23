@@ -56,6 +56,11 @@ SERVICE_MANIFESTS = (
     "compose.yaml",
 )
 _ROUTE_HINTS = ("app/", "pages/", "routes", "router", "App.", "main.")
+# 번역 파일 — 처음엔 받지 않고 분석 중 snap.read 로만(기본 언어 하나). $t('…') 문구를 실제 글자로
+LOCALE_FILE = re.compile(
+    r"(?:^|/)(?:locales?|lang|langs|i18n|internationalization|messages|translations)/[\w.-]+\.json$",
+    re.IGNORECASE,
+)
 log = logging.getLogger(__name__)
 _TEST_HINT = re.compile(r"(\.test\.|\.spec\.|\.stories\.|__tests__/)")
 
@@ -170,7 +175,9 @@ def _lazy_loader(
 
     def load(path: str) -> str | None:
         name = path.rsplit("/", 1)[-1]
-        readable = path.endswith(CODE_EXT) or name in SERVICE_MANIFESTS
+        readable = (
+            path.endswith(CODE_EXT) or name in SERVICE_MANIFESTS or bool(LOCALE_FILE.search(path))
+        )
         if budget[0] <= 0 or not readable or sizes.get(path, 0) > MAX_BYTES:
             return None
         budget[0] -= 1

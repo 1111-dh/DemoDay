@@ -142,8 +142,14 @@ async function run(c: Ctx, step: Step): Promise<Result> {
       return { click, clipStart };
     }
     case "scroll":
-      if (loc) await loc.scrollIntoViewIfNeeded();
-      else if (!live) await page.mouse.wheel(0, VIEWPORT.h * 0.8);
+      if (loc) {
+        await loc.scrollIntoViewIfNeeded();
+        return { click: null };
+      }
+      // 휠은 마우스 아래 요소로 간다. goto 직후 (0,0)이면 고정 메뉴 위라 안쪽 div가 스크롤되는 사이트(nuxt/movies)에서 안 움직인다
+      c.mouse = { x: VIEWPORT.w / 2, y: VIEWPORT.h / 2 };
+      await page.mouse.move(c.mouse.x, c.mouse.y);
+      if (!live) await page.mouse.wheel(0, VIEWPORT.h * 0.8);
       else {
         // 한 번에 점프하지 않고 나눠서 부드럽게
         for (let i = 0; i < 8; i++) {

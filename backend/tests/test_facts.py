@@ -259,3 +259,38 @@ def test_title_tagline_is_split_into_name_and_summary():
     assert _name_and_summary("# Foo: fast bar\n", "x") == ("Foo", "fast bar")
     # 하이픈 이름은 그대로
     assert _name_and_summary("# my-app\n\nhello\n", "x") == ("my-app", "hello")
+
+
+def test_nuxt_i18n_messages_feed_elements():
+    from app.analyze.i18n import load_messages
+
+    snap = make_snap(
+        {
+            "package.json": pkg({"nuxt": "4", "@nuxtjs/i18n": "9"}),
+            "nuxt.config.ts": "export default defineNuxtConfig({ i18n: { defaultLocale: 'en' } })",
+            "internationalization/en.json": (
+                '{"Type to search...": "Type to search...", "nav": {"home": "Home"}}'
+            ),
+            "internationalization/de-DE.json": '{"Type to search...": "Suchen..."}',
+            "app/pages/index.vue": "<template><div /></template>",
+            "app/pages/search.vue": (
+                "<template><input :placeholder=\"$t('Type to search...')\"></template>"
+            ),
+        }
+    )
+    msgs = load_messages(snap)
+    assert msgs["Type to search..."] == "Type to search..." and msgs["nav.home"] == "Home"
+    facts = build_facts(snap)
+    search = next(p for p in facts.pages if p.path == "/search")
+    assert [e.selector for e in search.elements] == ['input[placeholder="Type to search..."]']
+
+
+def test_locale_pick_prefers_default_then_en_then_ko():
+    from app.analyze.i18n import load_messages
+
+    ko_only = make_snap(
+        {"src/locales/ko.json": '{"a": "가"}', "src/locales/ja.json": '{"a": "あ"}'}
+    )
+    assert load_messages(ko_only) == {"a": "가"}
+    no_locale = make_snap({"package.json": pkg({"next": "15"})})
+    assert load_messages(no_locale) == {}
