@@ -301,3 +301,10 @@ def test_get_llm_picks_baze_with_groq_backup(monkeypatch):
     assert isinstance(only, OpenAICompatLLM) and only.model == "claude-haiku-5-5"
     monkeypatch.delenv("BAZE_API_KEY")
     assert get_llm() is None
+
+
+def test_unknown_provider_warns(monkeypatch, caplog):  # 11/23 'groq, baze' → 조용히 기본 자막
+    monkeypatch.setenv("LLM_PROVIDER", "groq, baze")
+    monkeypatch.setenv("BAZE_API_KEY", "b")
+    assert get_llm() is None
+    assert "LLM_PROVIDER" in caplog.text and "groq, baze" in caplog.text

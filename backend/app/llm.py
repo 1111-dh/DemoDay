@@ -295,4 +295,8 @@ def get_llm() -> LLM | None:
         return FallbackLLM(baze, backup) if backup else baze
     if provider == "groq" or (not provider and os.environ.get("GROQ_API_KEY")):
         return _groq_llm()
+    if provider not in ("", "anthropic"):
+        # 모르는 값이면 조용히 규칙 기반 기본값으로 떨어진다 — 꼭 알린다
+        log.warning("LLM_PROVIDER=%r 를 모른다 — baze·groq·anthropic 중 하나만 쓴다", provider)
+        return None
     return ClaudeLLM() if os.environ.get("ANTHROPIC_API_KEY") else None
