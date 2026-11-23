@@ -115,7 +115,12 @@ class OpenAICompatLLM:
             log.warning("LLM 분당 한도(429) — %.1f초 뒤 다시 시도", wait)
             self.sleep(wait)
         if res.status_code != 200:
-            log.warning("LLM API 오류 %s: %s", res.status_code, res.text[:300])
+            # 본문에는 Groq 조직 ID 등이 들어 있어 로그에 남기지 않는다 — 상태 코드와 오류 코드만
+            try:
+                code = res.json().get("error", {}).get("code", "")
+            except ValueError:
+                code = ""
+            log.warning("LLM API 오류 %s %s", res.status_code, code)
             return None
         try:
             content = res.json()["choices"][0]["message"]["content"]
