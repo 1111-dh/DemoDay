@@ -11,7 +11,7 @@
 - 캡처·렌더는 subprocess로 호출한다: `pnpm --filter @demoday/capture capture <scenario> <runDir>`, `pnpm --filter @demoday/render render <runDir> <out.mp4>`.
 
 ## LLM 출력 규칙
-- LLM은 **scenario.json / scene.json만** 만든다. structured output(JSON schema)을 쓴다.
+- LLM은 **scenario.json / scene.json만** 만든다. structured output(JSON schema)을 쓴다. 예외: 에이전트 녹화 모드(`CAPTURE_MODE=agent`, #53)에서는 `app/agent.py`가 화면을 보고 **다음 동작**(click·type·scroll·done)을 고른다. 실제로 한 동작은 캡처가 scenario.json으로 남기고 scene·render는 그대로 쓴다. 위험한 요소(로그아웃·삭제·결제)는 후보에서 빼고, 같은 요소는 두 번 누르지 않는다.
 - 공급자는 `.env`의 `LLM_PROVIDER`: **`baze`(기본 추천, 학교 BAZE 게이트웨이 — `BAZE_API_KEY`, 월 5,000크레딧 무료, 모델 `claude-haiku-5-5`(`BAZE_MODEL`), 영상 1개 ≈ 4크레딧)**, `groq`(무료 플랜, `GROQ_API_KEY`, 기본 모델 `openai/gpt-oss-120b`, `GROQ_MODEL`로 변경. 하루 한도(TPD 20만)를 다 쓰면 기다리지 않고 `GROQ_FALLBACK_MODEL`(기본 `qwen/qwen3.8-27b`, 빈 값이면 끔)로 바꾼다) 또는 `anthropic`(`ANTHROPIC_API_KEY`). 비어 있으면 키가 있는 쪽(BAZE → Groq). BAZE가 크레딧·인증·서버 오류로 내려가면 Groq 키가 있을 때 Groq로 넘어간다(`FallbackLLM`). BAZE는 strict JSON schema(`additionalProperties: false`, 모든 필드 required)를 요구한다. 키가 없으면 규칙 기반 기본값만 쓴다. 구현은 `app/llm.py`의 `get_llm()`.
 - scene 자막 전에 캡처 스크린샷을 이미지 모델(BAZE면 `BAZE_VISION_MODEL` 기본 `claude-haiku-5-5` → 예비 Groq `GROQ_VISION_MODEL` 기본 `qwen/qwen3.8-27b`, 빈 값이면 끔)로 읽어 화면별 `seen`(실제로 보이는 내용)을 scene LLM에 넣는다(`app/vision.py`). Groq가 이미지 1장을 약 2,000토큰으로 잡아서(분당 7,000) 4장씩 2x2로 붙여 요청 1번에 보낸다. 실패하면 `seen` 없이 예전처럼 자막을 쓴다.
 - 결과는 반드시 `schema_errors(kind, data)`로 검증한다. pydantic 모델은 if/then 조건(goto→path 등)을 확인하지 못한다.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
@@ -16,9 +17,11 @@ CAPTURE_TIMEOUT = 300  # 단계당 5초 × 최대 7단계 + 브라우저 기동 
 RENDER_TIMEOUT = 900
 
 
-def _run(cmd: list[str], what: str, timeout: float) -> None:
+def _run(cmd: list[str], what: str, timeout: float, env: dict[str, str] | None = None) -> None:
     try:
-        res = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True, timeout=timeout)
+        res = subprocess.run(
+            cmd, cwd=paths.ROOT, capture_output=True, text=True, timeout=timeout, env=env
+        )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"{what} 시간 초과 ({timeout:g}초)") from None
     if res.returncode != 0:
@@ -26,7 +29,30 @@ def _run(cmd: list[str], what: str, timeout: float) -> None:
         raise RuntimeError(f"{what} 실패:\n{tail}")
 
 
+AGENT_CAPTURE_TIMEOUT = 600  # 에이전트 모드: 최대 10동작 × (판단 + 실행·녹화)
+
+
+def agent_capture(run_dir: Path) -> tuple[list[str], dict[str, str] | None]:
+    """CAPTURE_MODE=agent 면 캡처에 넘길 인자(--agent --goal)와 에이전트 환경변수(#53)."""
+    if os.environ.get("CAPTURE_MODE", "").strip().lower() != "agent":
+        return [], None
+    from app.agent import goal_for
+    from app.analyze.facts import RepoFacts
+
+    facts = RepoFacts.from_json((run_dir / "facts.json").read_text())
+    prompt_file = run_dir / "prompt.txt"
+    prompt = prompt_file.read_text() if prompt_file.exists() else None
+    env = {
+        **os.environ,
+        "DEMODAY_RUN_DIR": str(run_dir.resolve()),
+        # 캡처의 작업 폴더(capture/)에서 띄워지므로 backend 로 들어가서 실행한다(app 모듈 경로)
+        "DEMODAY_AGENT_CMD": f"cd '{paths.ROOT / 'backend'}' && uv run python -m app.agent",
+    }
+    return ["--agent", "--goal", goal_for(facts, prompt)], env
+
+
 def run_capture(run_dir: Path) -> None:
+    extra, env = agent_capture(run_dir)
     _run(
         [
             "pnpm",
@@ -36,9 +62,11 @@ def run_capture(run_dir: Path) -> None:
             "capture",
             str(run_dir / "scenario.json"),
             str(run_dir),
+            *extra,
         ],
         "캡처",
-        CAPTURE_TIMEOUT,
+        AGENT_CAPTURE_TIMEOUT if extra else CAPTURE_TIMEOUT,
+        env,
     )
 
 

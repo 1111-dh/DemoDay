@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -116,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--run", required=True)
     s.add_argument("--total-sec", type=float, default=60)
     s.add_argument("--architecture", action="store_true", help="마지막에 아키텍처 장면 넣기")
+    g = sub.add_parser("goal", help="에이전트 녹화 목표 한 줄 (CAPTURE_MODE=agent)")
+    g.add_argument("--run", required=True)
     f = sub.add_parser("facts")
     f.add_argument("--repo", required=True)
     w = sub.add_parser("warm", help="시연 레포 분석 캐시 채우기")
@@ -128,6 +131,11 @@ def main(argv: list[str] | None = None) -> int:
             facts(args.repo)
         elif args.cmd == "warm":
             return warm(args.file)
+        elif args.cmd == "goal":
+            from app.pipeline import agent_capture
+
+            os.environ["CAPTURE_MODE"] = "agent"
+            print(agent_capture(Path(args.run))[0][2])
         else:
             scene(args.run, args.total_sec, args.architecture)
     except (RepoError, ContractError) as e:
