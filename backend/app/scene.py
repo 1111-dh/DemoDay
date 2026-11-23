@@ -48,14 +48,12 @@ def _clamp(w: float) -> float:
 
 
 def keep_shots(shots: list[dict]) -> list[dict]:
-    """fallback이 연속되면 첫 번째만 남긴다 — 실패 뒤 이어지는 단계는 보통 같은 화면이다."""
-    kept: list[dict] = []
-    for shot in shots:
-        fallback = shot.get("status", "ok") == "fallback"
-        if fallback and kept and kept[-1].get("status", "ok") == "fallback":
-            continue
-        kept.append(shot)
-    return kept
+    """실패(fallback)한 단계는 뺀다 — 일어나지 않은 동작을 자막으로 말하게 된다.
+
+    전부 실패했으면 첫 화면 하나만 남긴다(영상은 나와야 한다).
+    """
+    ok = [shot for shot in shots if shot.get("status", "ok") != "fallback"]
+    return ok or shots[:1]
 
 
 def _card(text: str, kicker: str) -> dict:
