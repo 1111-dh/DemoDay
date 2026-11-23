@@ -1,7 +1,7 @@
 // 에이전트 동작 검사·셀렉터 생성 자체 검사: pnpm --filter @demoday/capture exec tsx src/agent.check.ts
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { elements, stableSelector, validAction } from "./agent";
+import { elements, replayableSelector, stableSelector, validAction } from "./agent";
 
 const ids = new Set([1, 2]);
 assert.deepEqual(validAction({ action: "click", id: 1, caption: "열어요" }, ids), { action: "click", id: 1, value: undefined, caption: "열어요" });
@@ -41,6 +41,17 @@ try {
     const sel = stableSelector(e);
     assert.equal(await page.locator(sel).count(), 1, sel);
   }
+  // 관찰 이름과 접근성 이름이 다를 때(aria-hidden 평점, aria-label) — 실제로 찾는 셀렉터로 바꿔 저장(#68)
+  await page.setContent(`
+    <a href="#a">Iron Man <span aria-hidden="true">7.7</span></a>
+    <button aria-label="장바구니 담기">🛒</button>
+    <a href="#b">오늘의 질문</a>`);
+  for (const e of await elements(page)) {
+    const sel = await replayableSelector(page, e);
+    const id = await page.locator(sel).evaluate((el) => el.getAttribute("data-demoday-id"));
+    assert.equal(id, String(e.id), `${e.name} → ${sel}`);
+  }
+  assert.match(await replayableSelector(page, (await elements(page)).find((e) => e.name.startsWith("Iron"))!), /^role=link\[name=\/\^\\s\*Iron\\s\*Man\/\]/);
 } finally {
   await browser.close();
 }
