@@ -148,5 +148,5 @@ def test_describe_many_leaves_room_for_thinking(
         )
 
     assert _vision(handler).describe_many([png("red")] * 2) == [None, None]
-    assert seen["body"]["max_tokens"] >= 4000
+    assert seen["body"]["max_tokens"] >= 16000
     assert "length" in caplog.text  # 조용히 실패하지 않는다
