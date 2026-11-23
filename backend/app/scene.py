@@ -35,7 +35,7 @@ MAX_CARD = 28  # 문제·정리 카드는 큰 글씨 장 구분 카드로 그려
 SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 
-MAX_POINT = 24  # points 항목 한 줄
+MAX_POINT = 16  # points 항목 — 모션 그래픽용 짧은 키워드(프롬프트는 12자, 여유 4자)
 POINTS_BASE, POINT_SEC = 1.5, 1.0  # points 장면 길이: 1.5초 + 항목당 1초
 
 
