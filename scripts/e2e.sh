@@ -29,6 +29,6 @@ stage capture "$RUN/capture.json" \
 stage scene "$RUN/scene.json" \
   bash -c "cd '$ROOT/backend' && uv run python -m app.cli scene --run '$RUN' --total-sec '$SEC'"
 stage render - \
-  pnpm --silent --filter @demoday/render render "$RUN" "$RUN/preview.mp4" --scale=0.5
+  pnpm --silent --filter @demoday/render render "$RUN" "$RUN/preview.mp4" --scale=1.5
 
 echo "✓ 완료: $RUN/preview.mp4"
