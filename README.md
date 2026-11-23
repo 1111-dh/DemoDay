@@ -1,128 +1,192 @@
+<div align="center">
+
 # DemoDay
-2026 경북대학교 컴퓨터학부 해커톤
 
-> 시연을 찍지 마세요, 레포를 넣으세요.
+**시연을 찍지 마세요, 레포를 넣으세요.**
 
-**GitHub 레포 링크와 배포 URL만 넣으면, 실제 서비스 화면을 녹화해 발표용 데모 영상(MP4, 1920×1080)을 만들어 줍니다.**
-캡스톤·종합설계 팀이 발표 전에 데모 영상을 만드는 수고를 덜어 주는 서비스예요. 기획안: [`docs/기획안.md`](docs/기획안.md)
+GitHub 레포와 배포 URL만 넣으면 실제 서비스 화면을 녹화해<br>
+발표용 데모 영상(MP4, 1920×1080)을 만들어 주는 영상 스튜디오
 
-**[DemoDay 공개 시연 열기](https://demoday-topaz.vercel.app/)**
+[![Open DemoDay](https://img.shields.io/badge/서비스_열기-demoday--topaz.vercel.app-F26B1D?style=for-the-badge)](https://demoday-topaz.vercel.app/)
 
-## 무엇을 해 주나요
+![Next.js](https://img.shields.io/badge/Next.js_16-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React_19-20232A?logo=react&logoColor=61DAFB)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
+![Remotion](https://img.shields.io/badge/Remotion_4-0B84F3?logo=remotion&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude_Haiku_5.5-D97757?logo=anthropic&logoColor=white)
 
-- **레포를 읽고 시연 순서를 짜요.** 라우트·버튼·입력칸·README를 분석해서 어떤 화면을 어떤 순서로 보여줄지 시나리오를 만들어요. React Router, Next.js, Vue Router, Nuxt, SvelteKit, Flutter web을 지원해요.
-- **실제 서비스를 직접 써 보며 녹화해요.** 헤드리스 브라우저가 배포 URL에서 클릭·입력·스크롤을 하고 그대로 녹화해요. 테스트 계정을 주면 로그인한 뒤 찍고, 로그인 값은 영상과 로그 어디에도 남기지 않아요.
-- **에이전트 녹화 모드 (선택):** AI가 화면을 보면서 다음에 무엇을 누를지 직접 골라 서비스 흐름을 따라가요.
-- **화면을 보고 자막을 써요.** 녹화한 화면을 이미지 모델이 읽고, 그 내용으로 해요체 자막과 강조어를 만들어요.
-- **이야기가 있는 영상이에요.** README에서 뽑은 문제·해결을 모션 그래픽으로 보여주고, 실제 화면 → 정리 순서로 이어져요. 영상 길이는 내용에 맞추고, 요청한 시간은 최대 길이로만 써요.
-- **웹에서 고쳐요.** 시나리오 순서를 바꾸고, 장면 길이·자막을 고친 뒤 다시 렌더할 수 있어요. 영상에 바라는 점(화면 순서, 말투, 강조)을 프롬프트로 넣을 수 있어요.
+[사용법](#사용법) · [주요 기능](#주요-기능) · [동작 방식](#동작-방식) · [기술 스택](#기술-스택) · [직접 실행하기](#직접-실행하기)
+
+<sub>2026 경북대학교 컴퓨터학부 해커톤</sub>
+
+</div>
+
+---
+
+캡스톤·종합설계 팀은 발표 직전마다 데모 영상을 찍고, 자르고, 자막을 붙이느라 시간을 씁니다. DemoDay는 레포를 읽어 **무엇을 어떤 순서로 보여줄지** 정하고, 배포된 서비스를 **실제로 써 보며 녹화한 뒤**, 화면에 맞는 자막과 모션 그래픽을 입혀 바로 발표에 쓸 수 있는 영상을 만듭니다.
+
+> [!NOTE]
+> LLM은 영상을 직접 만들지 않습니다. 장면 구성(JSON)만 만들고, 렌더러가 실제 녹화 화면을 그대로 그립니다. 그래서 실제 서비스와 다른 "가짜 데모"가 나오지 않습니다.
+
+## 사용법
+
+**[demoday-topaz.vercel.app](https://demoday-topaz.vercel.app/)** 에서 바로 써 볼 수 있어요. 설치는 필요 없습니다.
+
+1. **프로젝트 입력** — GitHub 저장소 URL과 배포 URL을 넣고 최대 영상 길이를 고릅니다. 처음이라면 **예시로 채우기**를 눌러 보세요.
+   - 로그인이 필요한 서비스라면 **테스트 계정 및 제작 요청 (선택)** 을 열어 테스트 계정을 넣습니다. 로그인 값은 영상·로그 어디에도 남지 않아요.
+   - 같은 곳에 "검색 기능을 먼저 보여주세요"처럼 **영상에 바라는 점**을 적을 수 있어요.
+2. **시나리오 확인** — DemoDay가 레포를 분석해 만든 **촬영 순서**가 나옵니다. 순서를 바꾸거나 단계를 빼고 **영상 만들기**를 누릅니다.
+3. **영상 미리보기** — 녹화 → 자막 → 렌더링이 진행됩니다(보통 1~3분). 완성되면 바로 재생하고 **MP4로 다운로드**할 수 있어요.
+4. **장면 수정** — 장면 순서·길이·자막을 고치고 **저장하고 다시 렌더링**을 누르면 수정본이 나옵니다.
+
+> [!TIP]
+> 영상 길이는 내용에 맞춰 정해지고, 고른 시간은 **최대 길이**로만 쓰입니다. 짧은 서비스를 억지로 늘리지 않아요.
+
+## 주요 기능
+
+| | |
+|---|---|
+| **레포 분석 → 시나리오** | 라우트·버튼·입력칸·README를 읽어 시연 순서를 짭니다. React Router · Next.js · Vue Router · Nuxt · SvelteKit · Flutter web 지원 |
+| **실제 화면 녹화** | 헤드리스 브라우저가 배포 URL에서 마우스를 움직여 클릭·입력·스크롤하며 녹화합니다. 로딩 중·로그인 화면은 자동으로 걸러요 |
+| **에이전트 녹화 모드** | AI가 화면을 직접 보고 다음에 누를 곳을 골라 서비스 흐름을 따라갑니다. 고른 동작은 저장해 두고 다음부터 그대로 재생해요 |
+| **화면을 읽는 자막** | 이미지 모델이 녹화 화면을 읽고, 실제로 보이는 내용으로 해요체 자막과 강조어를 씁니다 |
+| **이야기가 있는 구성** | README에서 뽑은 문제 → 해결을 모션 그래픽으로 보여 주고 실제 화면 → 정리로 이어집니다 |
+| **설명하는 곳에 시선을** | 클릭한 곳과 화면의 핵심 영역으로 카메라처럼 다가가는 줌, 부드러운 스크롤 |
+| **웹에서 수정·재렌더** | 시나리오 순서, 장면 길이·자막을 고쳐 다시 렌더링 |
 
 ## 동작 방식
 
-```
-레포 + 배포 URL ─[분석·LLM]→ scenario.json ─[Playwright 녹화]→ capture.json + 영상
-                                                               │ (이미지 모델이 화면을 읽음)
-                          scene.json ←──[LLM 자막·구성]───────┘
-                              │
-                              └─[Remotion 렌더]→ preview.mp4 (1920×1080)
-```
-
-LLM은 영상을 직접 만들지 않아요. 장면 JSON만 만들고, 렌더러가 그 JSON을 그대로 그려요. 그래서 실제 화면과 다른 "가짜 데모"가 나오지 않아요. 단계 사이 형식은 `contracts/*.schema.json`이 정해요.
-
-## 직접 실행하기
-
-```bash
-git clone https://github.com/1111-dh/DemoDay.git && cd DemoDay
-make setup        # pnpm·uv 의존성, Playwright 크로미움, git 훅 설치, .env 생성
-make check        # 통과하면 준비 완료
-```
-필요: Node 20+, [uv](https://docs.astral.sh/uv/), make.
-
-`.env`에 아래 값을 채운 뒤 실행해요.
-
-```bash
-make dev-api      # API  http://localhost:8000
-make dev-web      # 웹   http://localhost:3000
-# 또는 웹 없이 한 번에:
-make e2e REPO=https://github.com/nuxt/movies URL=https://movies.nuxt.space
+```mermaid
+flowchart LR
+  A["GitHub 레포<br>+ 배포 URL"] -->|"레포 분석 · LLM"| S[scenario.json]
+  S -->|"Playwright 녹화<br>(또는 AI 에이전트)"| C["capture.json<br>+ 녹화 영상"]
+  C -->|"이미지 모델이 화면 읽기<br>LLM 자막·구성"| N[scene.json]
+  N -->|"Remotion 렌더"| V["preview.mp4<br>1920×1080"]
+  N <-->|"순서·길이·자막 수정"| W[웹 편집기]
 ```
 
-### 환경변수 (`.env`)
+단계 사이의 데이터 형식은 [`contracts/*.schema.json`](contracts/)이 정합니다. 각 단계는 실패해도 멈추지 않고(대체 화면·규칙 기반 기본값) 영상은 끝까지 나오도록 만들었습니다.
 
-| 이름 | 필수 | 설명 |
-|---|---|---|
-| `LLM_PROVIDER` | 권장 | `baze`(기본 추천) · `groq` · `anthropic` 중 **하나** |
-| `BAZE_API_KEY` | `baze`일 때 | BAZE API 게이트웨이 키. 기본 모델은 Claude Haiku 5.5예요(`BAZE_MODEL`, `BAZE_VISION_MODEL`, `BAZE_AGENT_MODEL`로 변경) |
-| `GROQ_API_KEY` | 선택 | Groq 키. `baze`가 크레딧·장애로 실패하면 예비로 써요 |
-| `ANTHROPIC_API_KEY` | `anthropic`일 때 | Anthropic API 키 |
-| `GITHUB_TOKEN` | **권장** | 없으면 GitHub API가 시간당 60회로 막혀서 레포 분석이 실패할 수 있어요 |
-| `CAPTURE_MODE` | 선택 | `agent`면 에이전트 녹화 모드로 찍어요(느리고 결과가 매번 달라요) |
-| `DEMODAY_API_URL` | 웹 배포 | 웹 서버가 API로 요청을 넘길 주소(기본 `http://127.0.0.1:8000`) |
+## 기술 스택
 
-LLM 키가 없어도 규칙 기반 기본값으로 영상은 나와요(자막이 단순해져요).
-
-### 시연 레포 미리 준비
-
-```bash
-make warm          # backend/samples.json의 레포를 미리 분석해 캐시
-make warm AGENT=1  # 에이전트로 한 번 녹화해서, 에이전트가 고른 동작을 캐시(시연 때는 그대로 재생)
-```
-웹 첫 화면의 예시 버튼이 `backend/samples.json`을 읽어요. 같은 레포·URL·프롬프트로 요청하면 캐시에서 바로 나와요.
-
-## 배포
-
-**API 하나가 분석·녹화(크로미움)·렌더(Remotion)를 모두 돌려요.** 메모리 2GB 이상인 서버가 필요하고, 512MB 무료 컨테이너에서는 렌더 중에 멈춰요.
-
-1. 서버에서 위의 `make setup`을 하고 `.env`를 채워요.
-2. API를 자동 재시작 없이 띄워요.
-   ```bash
-   cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-   ```
-3. 웹(`web/`, Next.js)은 배포 환경변수에 `DEMODAY_API_URL=<API 주소>`만 넣으면 돼요. 웹 서버가 `/api/runs/*`를 API로 넘겨서 CORS 설정이 필요 없어요.
-
-- 해커톤 기간에는 API를 노트북에서 돌리고 [Cloudflare 무료 터널](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)(`cloudflared tunnel --url http://127.0.0.1:8000`)로 공개했어요. 터널을 다시 켜면 주소가 바뀌니 웹의 `DEMODAY_API_URL`도 바꿔야 해요.
-- 자동 배포는 없어요. 배포는 수동으로만 해요.
-
-## 구조
+| 영역 | 기술 |
+|---|---|
+| **웹** (`web/`) | Next.js 16 · React 19 · Tailwind CSS 4 · TypeScript |
+| **API · 분석** (`backend/`) | Python 3.12 · FastAPI · Pydantic · httpx · Pillow |
+| **녹화** (`capture/`) | Playwright (Chromium) · tsx |
+| **렌더** (`render/`) | Remotion 4 · React · Pretendard 글꼴 |
+| **AI** | Claude Haiku 5.5 (BAZE API 게이트웨이) — 시나리오·자막·화면 읽기·에이전트, 예비 Groq · Anthropic API |
+| **계약** (`contracts/`) | JSON Schema → Python(pydantic)·TypeScript 타입 자동 생성 |
+| **도구** | pnpm 워크스페이스 · uv · Ruff · pytest · Make |
+| **배포** | 웹 Vercel · API 자체 서버 |
 
 ```
-contracts/   JSON Schema 3개 + fixtures  ← 팀 계약. 합의 없이 수정 금지
-backend/     A · FastAPI, 레포 분석, LLM(시나리오·자막·화면 읽기·에이전트)
-capture/     B · Playwright 녹화
-render/      B · Remotion 장면·렌더
-web/         C · Next.js 웹(입력·시나리오 확인·미리보기·장면 수정)
+contracts/   JSON Schema 3개 + fixtures  (팀 계약 — 합의 없이 수정 금지)
+backend/     FastAPI, 레포 분석, LLM(시나리오·자막·화면 읽기·에이전트)
+capture/     Playwright 녹화
+render/      Remotion 장면·렌더
+web/         Next.js 웹(입력·시나리오 확인·미리보기·장면 수정)
 scripts/     계약 검증, 타입 생성, e2e
 ```
 
-## 자주 쓰는 명령
+## 직접 실행하기
+
+필요: Node 20+ · [pnpm](https://pnpm.io/) · [uv](https://docs.astral.sh/uv/) · make
+
+```bash
+git clone https://github.com/1111-dh/DemoDay.git && cd DemoDay
+make setup        # 의존성, Playwright 크로미움, git 훅 설치, .env 생성
+make check        # 통과하면 준비 완료
+
+make dev-api      # API  http://localhost:8000
+make dev-web      # 웹   http://localhost:3000
+
+# 웹 없이 한 번에 영상 만들기
+make e2e REPO=https://github.com/nuxt/movies URL=https://movies.nuxt.space
+```
+
+> [!NOTE]
+> LLM 키가 없어도 규칙 기반 기본값으로 영상은 나옵니다(자막이 단순해져요).
+
+<details>
+<summary><b>환경변수 (<code>.env</code>)</b></summary>
+
+| 이름 | 필수 | 설명 |
+|---|---|---|
+| `LLM_PROVIDER` | 권장 | `baze`(기본 추천) · `groq` · `anthropic` 중 하나 |
+| `BAZE_API_KEY` | `baze`일 때 | BAZE API 게이트웨이 키. 기본 모델 Claude Haiku 5.5 (`BAZE_MODEL`, `BAZE_VISION_MODEL`, `BAZE_AGENT_MODEL`로 변경) |
+| `GROQ_API_KEY` | 선택 | `baze`가 크레딧·장애로 실패하면 예비로 사용 |
+| `ANTHROPIC_API_KEY` | `anthropic`일 때 | Anthropic API 키 |
+| `GITHUB_TOKEN` | 권장 | 없으면 GitHub API가 시간당 60회로 제한돼 분석이 실패할 수 있어요 |
+| `CAPTURE_MODE` | 선택 | `agent`면 에이전트 녹화 모드(느리고 결과가 매번 달라요) |
+| `DEMODAY_API_URL` | 웹 배포 | 웹 서버가 API로 요청을 넘길 주소(기본 `http://127.0.0.1:8000`) |
+
+</details>
+
+<details>
+<summary><b>시연 레포 미리 준비</b></summary>
+
+```bash
+make warm          # backend/samples.json의 레포를 미리 분석해 캐시
+make warm AGENT=1  # 에이전트로 한 번 녹화해 고른 동작을 캐시(시연 때는 그대로 재생)
+```
+
+웹의 **예시로 채우기**가 `backend/samples.json`을 읽습니다. 같은 레포·URL·프롬프트로 요청하면 캐시에서 바로 나와요.
+
+</details>
+
+<details>
+<summary><b>배포</b></summary>
+
+> [!IMPORTANT]
+> API 하나가 분석·녹화(크로미움)·렌더(Remotion)를 모두 돌립니다. 메모리 **2GB 이상** 서버가 필요하고, 512MB 무료 컨테이너에서는 렌더 중에 멈춰요.
+
+1. 서버에서 `make setup` 후 `.env`를 채웁니다.
+2. API 실행: `cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`
+3. 웹(`web/`)은 배포 환경변수에 `DEMODAY_API_URL=<API 주소>`만 넣으면 됩니다. 웹 서버가 `/api/runs/*`를 API로 넘겨 CORS 설정이 필요 없어요.
+
+해커톤 기간에는 API를 노트북에서 돌리고 [Cloudflare 무료 터널](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)로 공개했습니다. 터널을 다시 켜면 주소가 바뀌니 웹의 `DEMODAY_API_URL`도 바꿔야 해요. 자동 배포는 없습니다.
+
+</details>
+
+<details>
+<summary><b>자주 쓰는 명령</b></summary>
+
 `make help`로 전체 목록을 볼 수 있어요.
 
-| | |
+| 명령 | 설명 |
 |---|---|
 | `make check` | 계약 + 타입 + lint + test 전부 (커밋할 때 자동 실행) |
 | `make e2e REPO=… URL=… [PROMPT=…]` | 전체 파이프라인. 어느 단계에서 깨지는지 출력 |
 | `make warm [AGENT=1]` | 시연 레포 캐시 |
 | `make studio` | Remotion 장면 미리보기 (fixture) |
 | `make e2e-render` | fixture → `runs/fixture/preview.mp4` |
-| `make e2e-web-video` | 웹에서 영상 제작·자막 수정·재렌더 회귀 테스트 |
+| `make e2e-web-video` | 웹에서 영상 제작·다운로드·자막 수정·재렌더 회귀 테스트 (API 키 불필요) |
 | `make gen` | 스키마 변경 후 Python/TS 타입 재생성 |
 
-## 웹 영상 회귀 테스트
+`make e2e-web-video`는 임시 포트에서 웹과 API를 띄워 로컬 예제 페이지로 영상을 만들고, 두 MP4의 같은 시점 프레임에서 자막 글자 모양을 비교합니다. 결과와 실패 시 로그(`api.log`, `web.log`, `failure.png`)는 `runs/video-regression-*/`에 남아요.
 
-`make setup` 후 `make e2e-web-video`를 실행합니다. 테스트가 임시 포트에서 웹과 API를 시작하고 종료합니다. 로컬 예제 페이지와 고정된 저장소 분석 자료를 사용하며 `.env`와 API 키는 필요 없습니다. 오프라인에서 실행하려면 Playwright Chromium과 Remotion 브라우저를 미리 설치하세요(`pnpm --filter @demoday/render exec remotion browser ensure`). 렌더러가 사용하는 작업 폴더를 공유하므로 같은 체크아웃에서 다른 영상 렌더와 동시에 실행하지 마세요.
+</details>
 
-브라우저가 시나리오를 확인하고 원본 영상을 다운로드한 뒤 ‘메인 화면’을 ‘수정한 데모 자막’으로 바꿔 다시 다운로드합니다. 두 MP4에서 화면 장면의 같은 시점을 디코딩하고, 자막 영역의 글자 모양을 별도로 그린 기대 문구와 비교합니다.
+<details>
+<summary><b>AI 에이전트 하네스 (팀 개발 방식)</b></summary>
 
-매번 출력되는 `runs/video-regression-*/`에 원본·수정본 MP4, 판독 프레임과 기대 글자 이미지가 남습니다. 실패한 경우 `api.log`, `web.log`, 브라우저 오류 당시의 `failure.png` 및 하위 실행 폴더의 `status.json`을 확인하세요. 실패 시점까지 생성된 파일만 남습니다.
-
-## AI 에이전트 하네스
+팀원 셋이 Claude Code와 Codex로 나눠 개발했고, 두 에이전트가 같은 규칙(`AGENTS.md`)을 읽습니다.
 
 | | Claude Code | Codex |
 |---|---|---|
 | 규칙 | `CLAUDE.md` → `AGENTS.md` | `AGENTS.md` (루트 + 폴더별) |
 | 계약 파일 보호 | 편집 시점에 훅이 차단 | 커밋 시점에 pre-commit이 차단 |
-| 수정 직후 검사 | 훅 (ruff / tsc / 스키마) | — (`make check`를 직접 돌리게 AGENTS.md에 명시) |
+| 수정 직후 검사 | 훅 (ruff / tsc / 스키마) | `make check`를 직접 돌리게 AGENTS.md에 명시 |
 | 완료 전 검사 | Stop 훅이 `make check` 강제 | pre-commit이 `make check` 강제 |
-| 슬래시 명령 | `/e2e`, `/new-scene`, `/contract-change` | AGENTS.md에 같은 절차가 있음 |
+| 슬래시 명령 | `/e2e`, `/new-scene`, `/contract-change` | AGENTS.md에 같은 절차 |
 
-**계약 변경 절차:** 팀 채팅에서 합의 → `DEMODAY_CONTRACT_CHANGE=1 claude`(Codex 사용자는 직접 수정) → 스키마 수정 → `make gen` → fixtures 갱신 → `DEMODAY_CONTRACT_CHANGE=1 git commit`.
+**계약 변경 절차:** 팀 합의 → `DEMODAY_CONTRACT_CHANGE=1 claude`(Codex는 직접 수정) → 스키마 수정 → `make gen` → fixtures 갱신 → `DEMODAY_CONTRACT_CHANGE=1 git commit`
+
+</details>
+
+## 더 보기
+
+- 기획안: [`docs/기획안.md`](docs/기획안.md)
+- 폴더별 규칙: [`backend/AGENTS.md`](backend/AGENTS.md) · [`capture/AGENTS.md`](capture/AGENTS.md) · [`render/AGENTS.md`](render/AGENTS.md)
