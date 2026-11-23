@@ -1,6 +1,6 @@
 import type { Scene, SceneDoc } from "@demoday/contracts";
 import Image from "next/image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 function caption(s: Scene) {
   switch (s.type) {
@@ -64,7 +64,21 @@ export default function Editor({
 }) {
   const [doc, setDoc] = useState(initial);
   const [index, select] = useState(0);
+  const leaveDialog = useRef<HTMLDialogElement>(null);
   const s = doc.scenes[index];
+  function requestBack() {
+    // An absent screen caption and an empty caption look identical in the editor.
+    const normalize = (key: string, value: unknown) =>
+      key === "caption" && value === "" ? undefined : value;
+    if (
+      JSON.stringify(doc.scenes, normalize) ===
+      JSON.stringify(initial.scenes, normalize)
+    ) {
+      back();
+    } else {
+      leaveDialog.current?.showModal();
+    }
+  }
   function update(next: Scene) {
     const scenes = doc.scenes.map((v, i) =>
       i === index ? next : v,
@@ -165,7 +179,7 @@ export default function Editor({
             ↓ 뒤로
           </button>
           <div className="actions">
-            <button type="button" onClick={back}>
+            <button type="button" onClick={requestBack}>
               돌아가기
             </button>
             {files && (
@@ -182,6 +196,27 @@ export default function Editor({
           </div>
         </section>
       </fieldset>
+      <dialog
+        ref={leaveDialog}
+        className="leave-dialog"
+        aria-labelledby="leave-title"
+        aria-describedby="leave-description"
+      >
+        <h2 id="leave-title">저장하지 않은 변경사항이 있어요</h2>
+        <p id="leave-description">돌아가면 이번에 수정한 내용은 사라집니다.</p>
+        <div className="actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={() => leaveDialog.current?.close()}
+          >
+            계속 편집
+          </button>
+          <button type="button" onClick={back}>
+            변경사항 버리기
+          </button>
+        </div>
+      </dialog>
     </form>
   );
 }

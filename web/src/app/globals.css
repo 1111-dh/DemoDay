@@ -408,3 +408,14 @@ fieldset.editor {
     padding: 7px 10px;
   }
 }
+
+.leave-dialog {
+  width: min(420px, calc(100% - 32px));
+  padding: 24px;
+  color: inherit;
+  border: 1px solid #e4e1da;
+  border-radius: 16px;
+}
+.leave-dialog::backdrop {
+  background: rgb(25 25 22 / 45%);
+}
