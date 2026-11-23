@@ -26,7 +26,8 @@ def capture():
 def test_assemble_without_copy_matches_contract(scenario, capture):
     doc = assemble(scenario, capture["shots"], FACTS, 60, True, None)
     assert schema_errors("scene", doc) == []
-    assert (doc["fps"], doc["totalSec"]) == (30, 60)
+    assert doc["fps"] == 30
+    assert doc["totalSec"] == sum(x["durationSec"] for x in doc["scenes"]) < 60  # 내용 길이
     assert [s["type"] for s in doc["scenes"]] == ["title", "screen", "screen", "architecture"]
     title = doc["scenes"][0]
     assert (title["text"], title["subtitle"], title["durationSec"]) == (
@@ -85,7 +86,7 @@ def test_build_scene_writes_file_with_llm_copy(tmp_path):
     doc = build_scene(run, 90, True, FakeLLM(copy))
     assert json.loads((run / "scene.json").read_text()) == doc
     assert doc["scenes"][0]["text"] == "T"
-    assert doc["totalSec"] == 90
+    assert doc["totalSec"] == sum(x["durationSec"] for x in doc["scenes"]) <= 90
 
 
 def test_build_scene_rejects_bad_copy_then_defaults(tmp_path):
@@ -132,9 +133,23 @@ def _copy(**kw):
 def test_story_cards_from_copy(scenario, capture):
     copy = _copy(problem="회의록 정리는 늘 PM 몫", closing="회의만 하면 할 일이 정리됩니다")
     scenes = assemble(scenario, capture["shots"], FACTS, 60, True, copy)["scenes"]
-    card = {"type": "title", "durationSec": 3}
-    assert scenes[1] == {**card, "text": "회의록 정리는 늘 PM 몫", "kicker": "문제"}
-    assert scenes[-2] == {**card, "text": "회의만 하면 할 일이 정리됩니다", "kicker": "정리"}
+    from app.scene import _read_sec
+
+    card = {"type": "title"}
+    problem = "회의록 정리는 늘 PM 몫"
+    assert scenes[1] == {
+        **card,
+        "durationSec": _read_sec(problem),
+        "text": problem,
+        "kicker": "문제",
+    }
+    closing = "회의만 하면 할 일이 정리됩니다"
+    assert scenes[-2] == {
+        **card,
+        "durationSec": _read_sec(closing),
+        "text": closing,
+        "kicker": "정리",
+    }
     assert scenes[-1]["type"] == "architecture"
 
 
@@ -274,3 +289,30 @@ def test_highlight_dedupes_and_prefers_longer_word(scenario, capture):
     copy = _copy(captions=["녹음 파일로 올립니다", "검색"], highlights=words)
     screen = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"][1]
     assert screen["highlight"] == ["녹음 파일"]
+
+
+def test_total_is_content_length_not_stretched(
+    scenario, capture
+):  # 60초를 채우려 늘리면 루즈해진다
+    copy = _copy(problem="회의록 정리는 늘 PM 몫", closing="회의만 하면 정리돼요")
+    doc = assemble(scenario, capture["shots"], FACTS, 60, True, copy)
+    total = sum(s["durationSec"] for s in doc["scenes"])
+    assert doc["totalSec"] == round(total, 2) < 60  # 내용 길이 그대로 (렌더가 늘리지 않음)
+
+
+def test_total_capped_by_requested_length(scenario, capture):
+    doc = assemble(scenario, capture["shots"], FACTS, 10, True, None)
+    assert doc["totalSec"] == 10  # 내용이 더 길면 요청 길이에 맞춰 줄인다
+
+
+def test_card_length_follows_text_length(scenario, capture):
+    short = assemble(scenario, capture["shots"], FACTS, 60, False, _copy(problem="느려요"))
+    long = assemble(
+        scenario,
+        capture["shots"],
+        FACTS,
+        60,
+        False,
+        _copy(problem="임대인이 빈 상가에 맞는 업종을 판단하기 어려워요"),
+    )
+    assert short["scenes"][1]["durationSec"] < long["scenes"][1]["durationSec"] <= 4

@@ -20,11 +20,11 @@ FPS = 30
 TITLE_SEC = 3
 SCREEN_SEC = 4
 FALLBACK_SEC = 2
-ARCH_SEC = 6
+ARCH_SEC = 4
 ZOOM = 1.6
 W_MIN, W_MAX = 0.5, 2.0
 MAX_CAPTION = 30
-CARD_SEC = 3  # 문제·정리 카드
+CARD_MIN, CARD_MAX = 2.0, 4.0  # 문제·정리 카드 — 글자 수만큼 읽을 시간
 MAX_CLIP_SEC = 8  # 녹화 구간이 길어도 장면은 이 이상 늘리지 않는다
 LOGIN_SEC = 2
 LOGIN_CAPTION = "테스트 계정으로 로그인"
@@ -56,8 +56,13 @@ def keep_shots(shots: list[dict]) -> list[dict]:
     return ok or shots[:1]
 
 
+def _read_sec(text: str) -> float:
+    """한 줄 문장을 읽을 시간: 1.2초 + 글자당 0.09초 (2~4초)."""
+    return round(min(CARD_MAX, max(CARD_MIN, 1.2 + 0.09 * len(text))), 2)
+
+
 def _card(text: str, kicker: str) -> dict:
-    return {"type": "title", "durationSec": CARD_SEC, "text": text, "kicker": kicker}
+    return {"type": "title", "durationSec": _read_sec(text), "text": text, "kicker": kicker}
 
 
 def _highlight(caption: str, words: list[str]) -> list[str]:
@@ -124,7 +129,10 @@ def assemble(
         scenes.append(
             {"type": "architecture", "durationSec": ARCH_SEC, **infer_architecture(facts)}
         )
-    return {"fps": FPS, "totalSec": total_sec, "scenes": scenes}
+    # 영상 길이는 내용만큼 — 요청 길이(total_sec)는 상한. 더 길면 렌더가 비율대로 줄인다.
+    # 짧은 내용을 요청 길이까지 늘리면 카드가 늘어지고 화면이 느리게 재생돼 루즈해진다.
+    content = round(sum(sc["durationSec"] for sc in scenes), 2)
+    return {"fps": FPS, "totalSec": min(total_sec, content), "scenes": scenes}
 
 
 def _user_message(
