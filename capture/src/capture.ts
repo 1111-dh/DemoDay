@@ -289,6 +289,9 @@ async function main(scenarioPath: string, runDir: string) {
         shot = { stepId: step.id, image, click: r.click, status: "ok", atMs: Date.now() - t0 };
         if (recording) {
           await sleep(HOLD_MS); // 결과 화면을 더 녹화
+          // 클릭 단계는 클릭 직전에 찍혔다 — 녹화가 있으면 장면은 영상이 그리므로, 스크린샷(대체 화면·이미지 모델 근거)을
+          // clip 마지막 프레임과 같게 덮어쓴다. 실패하면 클릭 직전 화면을 그대로 둔다
+          if (taken) await snap(page, c.shotPath).catch(() => {});
           // 앞 clip 끝과 겹치지 않게(겹치면 장면이 바뀔 때 앞 장면 끝이 되감겨 보인다)
           const startMs = r.clipStart !== undefined ? r.clipStart - t0 : Math.max(prevEnd, stepStart - t0 - CLIP_PAD_MS);
           shot.clip = { startMs, endMs: Date.now() - t0 };
