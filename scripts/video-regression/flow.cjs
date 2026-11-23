@@ -8,6 +8,16 @@ const original = "메인 화면";
 const edited = "수정한 데모 자막";
 const file = (name) => path.join(out, name);
 
+async function inspectLayout(page, screen) {
+  for (const [device, width, height] of [["desktop", 1440, 960], ["mobile", 390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: file(screen + "-" + device + ".png"), fullPage: true });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      screen + " overflows on " + device);
+  }
+}
+
 async function download(page, name) {
   const link = page.getByRole("link", { name: "MP4 다운로드" });
   const retry = page.getByRole("button", { name: "다시 시도" });
@@ -49,6 +59,8 @@ async function run() {
   const page = await browser.newPage();
   try {
     await page.goto(ui);
+    await page.getByRole("button", { name: "시나리오 확인 →" }).waitFor();
+    await inspectLayout(page, "input");
     await page.getByLabel("GitHub 저장소 URL").fill("https://github.com/demo/local-example");
     await page.getByLabel("배포 URL").fill(api);
     const [response] = await Promise.all([
@@ -58,8 +70,12 @@ async function run() {
     assert(response.ok(), await response.text());
     const { id } = await response.json();
     await page.getByRole("article").filter({ hasText: original }).waitFor();
+    await inspectLayout(page, "scenario");
     await page.getByRole("button", { name: "영상 만들기" }).click();
+    await page.locator("progress").waitFor();
+    await inspectLayout(page, "progress");
     await download(page, "original");
+    await inspectLayout(page, "preview");
     const json = name => JSON.parse(fs.readFileSync(path.join(out, id, name), "utf8"));
     const capture = json("capture.json");
     assert.equal(capture.shots.length, 1);
@@ -70,6 +86,7 @@ async function run() {
     const caption = page.getByLabel("자막", { exact: true });
     assert.equal(await caption.inputValue(), original);
     await caption.fill(edited);
+    await inspectLayout(page, "editor");
     await page.getByRole("button", { name: "저장하고 다시 렌더링" }).click();
     await download(page, "edited");
 
