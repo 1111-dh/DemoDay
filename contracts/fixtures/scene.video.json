@@ -1,7 +1,102 @@
-{"fps": 30, "totalSec": 20, "scenes": [
-  {"type": "title", "durationSec": 3, "text": "프로젝트명", "subtitle": "한 줄 소개"},
-  {"type": "title", "durationSec": 3, "text": "회의록 정리는 늘 PM의 몫", "kicker": "문제"},
-  {"type": "screen", "durationSec": 3.5, "image": "shots/2.png", "video": {"src": "capture.webm", "startMs": 2500, "endMs": 6000}, "zoom": {"x": 640, "y": 120, "scale": 1.6}, "cursor": {"x": 640, "y": 120}, "caption": "녹음 파일로 올리면 끝", "highlight": ["녹음 파일"]},
-  {"type": "title", "durationSec": 3, "text": "회의만 하면 할 일이 정리됩니다", "kicker": "정리"},
-  {"type": "architecture", "durationSec": 6, "nodes": ["Next.js", "FastAPI", "PostgreSQL"], "edges": [[0, 1], [1, 2]]}
-]}
+{
+ "fps": 30,
+ "totalSec": 20,
+ "scenes": [
+  {
+   "type": "title",
+   "durationSec": 3,
+   "text": "프로젝트명",
+   "subtitle": "한 줄 소개"
+  },
+  {
+   "type": "points",
+   "durationSec": 4,
+   "kicker": "문제",
+   "heading": "회의가 끝나면 정리는 늘 PM 몫이에요",
+   "items": [
+    {
+     "icon": "clock",
+     "text": "회의록 옮기는 데 30분씩 걸려요"
+    },
+    {
+     "icon": "alert",
+     "text": "누가 무엇을 맡았는지 흐려져요"
+    }
+   ]
+  },
+  {
+   "type": "title",
+   "durationSec": 3,
+   "text": "회의록 정리는 늘 PM의 몫",
+   "kicker": "문제"
+  },
+  {
+   "type": "points",
+   "durationSec": 4.5,
+   "kicker": "해결",
+   "heading": "회의만 하면 할 일이 정리돼요",
+   "items": [
+    {
+     "icon": "chat",
+     "text": "회의를 듣고 할 일을 찾아요"
+    },
+    {
+     "icon": "check",
+     "text": "확실한 일은 바로 등록해요"
+    },
+    {
+     "icon": "bolt",
+     "text": "애매한 것만 PM에게 물어요"
+    }
+   ]
+  },
+  {
+   "type": "screen",
+   "durationSec": 3.5,
+   "image": "shots/2.png",
+   "video": {
+    "src": "capture.webm",
+    "startMs": 2500,
+    "endMs": 6000
+   },
+   "zoom": {
+    "x": 640,
+    "y": 120,
+    "scale": 1.6
+   },
+   "cursor": {
+    "x": 640,
+    "y": 120
+   },
+   "caption": "녹음 파일로 올리면 끝",
+   "highlight": [
+    "녹음 파일"
+   ]
+  },
+  {
+   "type": "title",
+   "durationSec": 3,
+   "text": "회의만 하면 할 일이 정리됩니다",
+   "kicker": "정리"
+  },
+  {
+   "type": "architecture",
+   "durationSec": 6,
+   "nodes": [
+    "Next.js",
+    "FastAPI",
+    "PostgreSQL"
+   ],
+   "edges": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     2
+    ]
+   ]
+  }
+ ]
+}

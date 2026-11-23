@@ -10,5 +10,8 @@ export type {
   Zoom,
   Point,
   VideoClip,
+  PointsScene,
+  PointItem,
+  Icon,
 } from "./scene";
 export type Scene = import("./scene").SceneDoc["scenes"][number];
