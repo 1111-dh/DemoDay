@@ -11,7 +11,7 @@ GitHub 레포 + 배포 URL → 실제 화면 캡처 기반 발표용 데모 영�
 ```
 repo+url ─[A analyze]→ scenario.json ─[B capture]→ capture.json + shots/
                                                        │
-                       scene.json ←──[A scene]─────────┘ (+ C 아키텍처 노드)
+                       scene.json ←──[A scene]─────────┘
                            │
                            ├─[B render]→ preview.mp4
                            └─[C web]→ 미리보기·순서/길이/자막 수정 → 다시 render
@@ -22,7 +22,7 @@ repo+url ─[A analyze]→ scenario.json ─[B capture]→ capture.json + shots/
 | `contracts/` | **전원 합의** | JSON Schema 3개 + fixtures + 생성된 TS 타입 |
 | `backend/` | A | FastAPI, GitHub 분석, LLM(scenario·scene 생성), 파이프라인 연결 |
 | `capture/` | B | Playwright 캡처 CLI |
-| `render/` | B (아키텍처 장면은 C) | Remotion 장면 컴포넌트, 렌더 CLI |
+| `render/` | B | Remotion 장면 컴포넌트, 렌더 CLI |
 | `web/` | C | Next.js 입력·시나리오 확인·미리보기·수정 UI |
 
 남의 폴더를 고쳐야 하면 고치지 말고 사용자에게 먼저 말한다.
@@ -52,7 +52,7 @@ repo+url ─[A analyze]→ scenario.json ─[B capture]→ capture.json + shots/
 
 ## 작업 규칙
 
-- MVP 범위만 만든다. **제외**: 로그인 과정 녹화·입력값이 보이는 로그인 장면, 요청 흐름·ERD 장면, 자연어 수정(제작 전 프롬프트는 허용), 작업 큐·스토리지. (로그인은 scenario `auth`로 캡처 전에 처리하고, 장면으로 넣을 때는 입력칸을 가린 정지 화면만 — 낮은 우선순위.) 아이디어가 생기면 구현하지 말고 제안만 한다.
+- MVP 범위만 만든다. **제외**: 아키텍처(기술 스택) 장면(11/23 결정 — 코드·계약은 휴면, `includeArchitecture` 기본 false로 영상에 안 나온다), 로그인 과정 녹화·입력값이 보이는 로그인 장면, 요청 흐름·ERD 장면, 자연어 수정(제작 전 프롬프트는 허용), 작업 큐·스토리지. (로그인은 scenario `auth`로 캡처 전에 처리하고, 장면으로 넣을 때는 입력칸을 가린 정지 화면만 — 낮은 우선순위.) 아이디어가 생기면 구현하지 말고 제안만 한다.
 - 레포 분석이 지원하는 프레임워크는 `backend/AGENTS.md`의 "분석 범위"가 기준이다. 지원을 늘리면 그 줄을 먼저 고치고 팀에 알린다.
 - 실패해도 영상은 나와야 한다. 캡처 실패는 `status: "fallback"` 스크린샷, LLM 출력 스키마 위반은 에러를 붙여 재시도(최대 2회) 후 규칙 기반 기본값을 쓴다.
 - 비밀값은 `.env`에만 둔다(`.env.example` 참고). 코드나 로그에 키를 남기지 않는다.
