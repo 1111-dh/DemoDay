@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -155,6 +156,8 @@ def assemble(
             if click := shot.get("click"):
                 screen["zoom"] = {"x": click["x"], "y": click["y"], "scale": ZOOM}
                 screen["cursor"] = {"x": click["x"], "y": click["y"]}
+            elif focus := shot.get("focus"):  # 클릭이 없는 화면도 설명하는 곳으로 천천히 다가간다
+                screen["zoom"] = {**focus, "scale": FOCUS_ZOOM}
         if caption:
             screen["caption"] = caption
             if highlights and (words := _highlight(caption, highlights[i])):
@@ -219,6 +222,27 @@ def describe_shots(run_dir: Path, shots: list[dict], describer: Describer) -> li
 
 EMPTY_SEEN = "로딩 중인 빈 화면"  # prompts/vision.md 가 빈 화면에 쓰라고 정한 문구
 
+# 이미지 모델이 설명 앞에 붙이는 핵심 영역 [위치](prompts/vision.md) → 1280x720 칸 중심
+FOCUS_ZOOM = 1.35  # 클릭 줌보다 약하게 — 맥락은 남기고 설명하는 곳으로 시선만 모은다
+_CELLS = ["왼쪽위", "위", "오른쪽위", "왼쪽", "가운데", "오른쪽", "왼쪽아래", "아래", "오른쪽아래"]
+_FOCUS = re.compile(r"^\[\s*([^\]]+?)\s*\]\s*")
+
+
+def split_focus(seen: list[str | None]) -> tuple[list[str | None], list[dict | None]]:
+    """'[위] 설명' → ('설명', 위 칸 중심). 위치가 없거나 모르는 말이면 None(줌 없음)."""
+    texts: list[str | None] = []
+    points: list[dict | None] = []
+    for s in seen:
+        m = _FOCUS.match(s or "")
+        cell = m.group(1).replace(" ", "") if m else ""
+        texts.append(s[m.end() :] if s and m else s)
+        if cell in _CELLS:
+            row, col = divmod(_CELLS.index(cell), 3)
+            points.append({"x": round((col + 0.5) * 1280 / 3), "y": round((row + 0.5) * 720 / 3)})
+        else:
+            points.append(None)
+    return texts, points
+
 
 def drop_empty(shots: list[dict], seen: list[str | None]) -> tuple[list[dict], list[str | None]]:
     """이미지 모델이 빈 화면이라 한 화면은 뺀다 — 보이는 게 없는데 자막만 기능을 말하게 된다.
@@ -274,6 +298,9 @@ def build_scene(
         seen = describe_shots(run_dir, shots, describer) if describer else None
         if seen is not None:  # 자막 점검용 — 화면마다 이미지 모델이 읽은 내용
             (run_dir / "seen.json").write_text(json.dumps(seen, ensure_ascii=False, indent=2))
+            seen, focus = split_focus(seen)
+            # 핵심 영역은 shot 에 붙인다(빈 화면을 뺄 때 같이 빠지게). capture.json 에는 안 쓴다
+            shots = [{**s, "focus": f} if f else s for s, f in zip(shots, focus, strict=False)]
             shots, seen = drop_empty(shots, seen)
         user = _user_message(scenario, shots, facts, prompt, seen)
         copy = generate(llm, system=SYSTEM, user=user, output=SceneCopy, check=check)
