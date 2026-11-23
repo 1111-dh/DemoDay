@@ -6,7 +6,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from app import llm, paths, runs
+from app import llm, paths, runs, vision
 from app.scene import build_scene
 
 log = logging.getLogger(__name__)
@@ -90,7 +90,9 @@ def build(rid: str, total_sec: float, include_architecture: bool) -> None:
         runs.write_status(rid, stage="capturing", warning=None)
         _capture_or_empty(rid, d)
         runs.write_status(rid, stage="scening")
-        build_scene(d, total_sec, include_architecture, llm.get_llm())
+        build_scene(
+            d, total_sec, include_architecture, llm.get_llm(), describer=vision.get_describer()
+        )
         runs.write_status(rid, stage="rendering")
         run_render(d)
         runs.write_status(rid, stage="done")

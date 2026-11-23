@@ -87,8 +87,11 @@ def warm(file: str) -> int:
 def scene(run: str, total_sec: float, include_architecture: bool = True) -> None:
     from app.llm import get_llm
     from app.scene import build_scene
+    from app.vision import get_describer
 
-    doc = build_scene(Path(run), total_sec, include_architecture, get_llm())
+    doc = build_scene(
+        Path(run), total_sec, include_architecture, get_llm(), describer=get_describer()
+    )
     print(f"✓ scene {len(doc['scenes'])}장면 → {run}/scene.json")
 
 
