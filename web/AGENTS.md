@@ -26,3 +26,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 미리보기·수정 화면은 scene의 `video`·`highlight`·`kicker`(계약 합의 후 생김)를 지우지 않고 그대로 보낸다.
 - 아키텍처(기술 스택) 장면은 **이번 범위에서 제외**(11/23 결정). 체크박스를 만들지 않고 build에 `includeArchitecture`를 보내지 않는다(기본 false). 아키텍처 장면 컴포넌트·추출 모듈 작업도 하지 않는다 — 웹 UI에 집중.
 - `GET /api/runs/{id}`에 `warning`이 있으면(예: 사이트가 응답하지 않아 화면 없이 만든 영상) 미리보기 위에 눈에 띄게 보여준다.
+웹 API 프록시 대상은 기본 http://127.0.0.1:8000 이며, 변경하려면 web/.env.local에 DEMODAY_API_URL을 설정하고 Next 서버를 재시작한다.

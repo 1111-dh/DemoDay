@@ -1,69 +1,476 @@
-import Image from "next/image";
+"use client";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import type { Scenario, SceneDoc } from "@demoday/contracts";
+import Editor from "./editor";
+import presets from "../../../backend/samples.json";
 
-export default function Home() {
+import videoFixture from "@demoday/contracts/fixtures/scene.video.json";
+import fixture from "@demoday/contracts/fixtures/scene.json";
+
+const titles = ["프로젝트 입력", "시나리오 확인", "영상 미리보기", "장면 수정"];
+const stages: Record<string, string> = {
+  queued: "제작 대기 중",
+  capturing: "웹 화면 캡처 중",
+  scening: "장면 구성 중",
+  rendering: "영상 렌더링 중",
+};
+async function request(
+  path: string,
+  method = "GET",
+  body?: unknown,
+  signal?: AbortSignal,
+) {
+  const response = await fetch("/api/runs" + path, {
+    method,
+    signal,
+    cache: "no-store",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new Error(
+      Array.isArray(data.detail)
+        ? data.detail
+            .map((item: string | { msg: string }) =>
+              typeof item === "string" ? item : item.msg,
+            )
+            .join(" · ")
+        : typeof data.detail === "string"
+          ? data.detail +
+            (response.status === 400 && data.detail.includes("로그인")
+              ? " 고급 옵션에서 로그인 경로를 입력해 주세요."
+              : "")
+          : "요청을 처리하지 못했습니다 (" +
+            response.status +
+            "). 입력과 서버 연결을 확인해 주세요.",
+    );
+  return data;
+}
+function Order({
+  index,
+  count,
+  move,
+}: {
+  index: number;
+  count: number;
+  move: (delta: number) => void;
+}) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <span className="order">
+      {[-1, 1].map((d) => (
+        <button
+          type="button"
+          key={d}
+          aria-label={
+            String(index + 1) + "번째 항목 " + (d < 0 ? "위로" : "아래로")
+          }
+          disabled={index + d < 0 || index + d >= count}
+          onClick={() => move(d)}
+        >
+          {d < 0 ? "↑" : "↓"}
+        </button>
+      ))}
+    </span>
+  );
+}
+function moved<T>(list: T[], index: number, delta: number) {
+  const next = [...list];
+  [next[index], next[index + delta]] = [next[index + delta], next[index]];
+  return next;
+}
+export default function Home() {
+  const [page, setPage] = useState(0),
+    [id, setId] = useState("");
+  const [scenario, setScenario] = useState<Scenario | null>(null),
+    [scene, setScene] = useState<SceneDoc | null>(null);
+  const [stage, setStage] = useState(""),
+    [error, setError] = useState(""),
+    [warning, setWarning] = useState("");
+  const [video, setVideo] = useState(""),
+    [busy, setBusy] = useState(false);
+  const [repo, setRepo] = useState(""),
+    [url, setUrl] = useState(""),
+    [prompt, setPrompt] = useState("");
+  const [totalSec, setTotalSec] = useState(60);
+  const [operation, setOperation] = useState<"build" | "scene">("build");
+  const [duration, setDuration] = useState(0);
+  const [poll, setPoll] = useState(0);
+  const sample = page === 3 && !id;
+  const path = "/" + encodeURIComponent(id);
+  async function act(work: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "연결을 확인해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (page !== 2) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try {
+        const data = await request(path, "GET", undefined, controller.signal);
+        if (controller.signal.aborted) return;
+        setWarning(data.warning || "");
+        setStage(data.stage);
+        if (data.stage === "error") {
+          setError(data.error || "영상 제작에 실패했습니다.");
+          return;
+        }
+        if (data.stage === "done") {
+          if (!data.scene || !data.videoUrl) {
+            setStage("offline");
+            setError("제작은 끝났지만 결과 파일을 불러올 수 없습니다.");
+            return;
+          }
+          setScene(data.scene);
+          setVideo(
+            data.videoUrl +
+              "?v=" +
+              encodeURIComponent(data.updatedAt || Date.now()),
+          );
+          return;
+        }
+        timer = setTimeout(refresh, 1500);
+      } catch {
+        if (!controller.signal.aborted) {
+          setStage("offline");
+          setError("진행 상태를 가져올 수 없습니다.");
+        }
+      }
+    }
+    void refresh();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [page, path, poll]);
+  function create(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget,
+      fields = new FormData(form);
+    const value = (key: string) => String(fields.get(key) || "");
+    void act(async () => {
+      const username = value("username"),
+        password = value("password");
+      if (Boolean(username) !== Boolean(password))
+        throw new Error(
+          "테스트 계정의 아이디와 비밀번호를 모두 입력해 주세요.",
+        );
+      const authPath = value("authPath").trim();
+      if (authPath && username)
+        throw new Error("테스트 계정과 로그인 경로 중 하나를 선택해 주세요.");
+      const data = await request("", "POST", {
+        repo: value("repo").trim(),
+        url: value("url").trim(),
+        totalSec: Number(value("seconds")),
+        prompt: value("prompt").trim() || undefined,
+        login: username ? { username, password } : undefined,
+        auth: authPath
+          ? {
+              steps: [
+                { id: 1, action: "goto", path: authPath, caption: "로그인" },
+              ],
+            }
+          : undefined,
+      });
+      setTotalSec(Number(value("seconds")));
+      setId(data.id);
+      setScenario(data.scenario);
+      setPage(1);
+    });
+  }
+  async function produce(kind: "build" | "scene", edited = scene) {
+    if (kind === "build") {
+      await request(path + "/scenario", "PUT", scenario);
+      await request(path + "/build", "POST", {
+        totalSec,
+      });
+    } else {
+      await request(path + "/scene", "PUT", edited);
+    }
+    if (edited) setScene(edited);
+    setOperation(kind);
+    setWarning("");
+    setDuration(0);
+    setVideo("");
+    setStage("queued");
+    setPage(2);
+    setPoll((n) => n + 1);
+  }
+  return (
+    <>
+      <header>
+        <strong>
+          <i>▶</i> DemoDay
+        </strong>
+        <span>영상 스튜디오</span>
+      </header>
+      <main className={page === 3 ? "wide" : page === 0 ? "intake" : ""}>
+        <nav aria-label="제작 단계">
+          {titles.map((t, i) => (
+            <span key={t} aria-current={page === i ? "step" : undefined}>
+              <em>{i + 1}</em> {t}
+            </span>
+          ))}
+        </nav>
+        <h1>
+          {
+            [
+              "어떤 프로젝트를 시연할까요?",
+              "이 순서로 촬영할까요?",
+              stage === "done" ? "영상이 완성됐어요" : "영상 미리보기",
+              "장면 수정",
+            ][page]
+          }
+        </h1>
+        {error && (
+          <p className="alert" role="alert">
+            {error}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        )}
+        {page === 0 && (
+          <form onSubmit={create}>
+            <fieldset disabled={busy}>
+              <div className="presets">
+                <small>예시로 채우기</small>
+                {presets.map((p, i) => (
+                  <button
+                    key={p.repo}
+                    type="button"
+                    onClick={() => {
+                      setRepo(p.repo);
+                      setUrl(p.url);
+                      setPrompt(p.prompt || "");
+                      setError("");
+                    }}
+                  >
+                    {i === 0 ? "채움 예시" : "Nuxt Movies 예시"}
+                  </button>
+                ))}
+              </div>
+              <label>
+                GitHub 저장소 URL
+                <input
+                  required
+                  type="url"
+                  name="repo"
+                  value={repo}
+                  onChange={(e) => setRepo(e.target.value)}
+                  placeholder="https://github.com/team/project"
+                />
+                <small>저장소를 분석해 시연할 화면과 기능을 찾습니다.</small>
+              </label>
+              <label>
+                배포 URL
+                <input
+                  required
+                  type="url"
+                  name="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://project.example.com"
+                />
+                <small>이 주소에서 실제 서비스 화면을 촬영합니다.</small>
+              </label>
+              <fieldset className="length">
+                <legend>최대 영상 길이</legend>
+                {[60, 90, 180].map((n) => (
+                  <label key={n}>
+                    <input
+                      type="radio"
+                      name="seconds"
+                      value={n}
+                      checked={totalSec === n}
+                      onChange={() => setTotalSec(n)}
+                    />
+                    {n}초
+                  </label>
+                ))}
+                <small>실제 영상은 내용에 따라 더 짧아질 수 있어요.</small>
+              </fieldset>
+              <details>
+                <summary>테스트 계정 및 제작 요청 (선택)</summary>
+                <label>
+                  아이디
+                  <input autoComplete="off" name="username" />
+                </label>
+                <label>
+                  비밀번호
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    name="password"
+                  />
+                </label>
+                <label>
+                  로그인 경로 (고급)
+                  <input name="authPath" pattern="/.*" placeholder="/login" />
+                </label>
+                <label>
+                  영상에 바라는 점
+                  <textarea
+                    maxLength={500}
+                    name="prompt"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={3}
+                  />
+                </label>
+              </details>
+              <button className="primary">
+                {busy ? "저장소 분석 중…" : "시나리오 확인 →"}
+              </button>
+              {process.env.NODE_ENV === "development" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setId("");
+                    setScene(structuredClone(fixture) as SceneDoc);
+                    setError("");
+                    setPage(3);
+                  }}
+                >
+                  샘플 장면 열기
+                </button>
+              )}
+            </fieldset>
+          </form>
+        )}
+        {page === 1 && scenario && (
+          <fieldset disabled={busy}>
+            <div className="meta">
+              {repo.replace("https://github.com/", "")} · 최대 {totalSec}초
+            </div>
+            <h2>촬영 순서</h2>
+            {scenario.steps.map((s, i) => (
+              <article key={s.id}>
+                <b>
+                  {i + 1}. {s.caption}
+                  <small>{s.path}</small>
+                </b>
+                <div>
+                  <Order
+                    index={i}
+                    count={scenario.steps.length}
+                    move={(d) =>
+                      setScenario({
+                        ...scenario,
+                        steps: moved(scenario.steps, i, d) as Scenario["steps"],
+                      })
+                    }
+                  />
+                  <button
+                    disabled={scenario.steps.length === 1}
+                    onClick={() =>
+                      setScenario({
+                        ...scenario,
+                        steps: scenario.steps.filter(
+                          (_, j) => j !== i,
+                        ) as Scenario["steps"],
+                      })
+                    }
+                  >
+                    삭제
+                  </button>
+                </div>
+              </article>
+            ))}
+
+            <button
+              className="primary"
+              onClick={() => act(() => produce("build"))}
+            >
+              {busy ? "요청 중…" : "영상 만들기"}
+            </button>
+            <button onClick={() => setPage(0)}>프로젝트 정보 수정</button>
+            <small>제작에는 보통 1~3분이 걸립니다.</small>
+          </fieldset>
+        )}
+        {page === 2 && (
+          <section aria-live="polite">
+            {warning && <p className="alert">{warning}</p>}
+            {stage === "done" && video ? (
+              <>
+                <h2>{repo.replace("https://github.com/", "")}</h2>
+                <small>
+                  프로젝트 데모 영상
+                  {duration > 0 &&
+                    " · " +
+                      Math.floor(duration / 60) +
+                      ":" +
+                      String(Math.floor(duration % 60)).padStart(2, "0")}
+                </small>
+                <video
+                  controls
+                  src={video}
+                  onLoadedMetadata={(e) =>
+                    setDuration(e.currentTarget.duration)
+                  }
+                />
+                <a className="primary" href={video} download="DemoDay.mp4">
+                  MP4 다운로드
+                </a>
+                <button onClick={() => setPage(3)}>장면 수정</button>
+              </>
+            ) : ["error", "offline"].includes(stage) ? (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  act(async () => {
+                    if (stage === "offline") {
+                      setStage("queued");
+                      setPoll((n) => n + 1);
+                    } else await produce(operation);
+                  })
+                }
+              >
+                다시 시도
+              </button>
+            ) : (
+              <>
+                <h2>{stages[stage] || "제작 상태 확인 중"}</h2>
+                <ol className="progress">
+                  {Object.entries(stages).map(([key, label]) => (
+                    <li
+                      key={key}
+                      aria-current={key === stage ? "step" : undefined}
+                    >
+                      {label}
+                    </li>
+                  ))}
+                </ol>
+                <progress />
+                <p>영상 제작에는 보통 1~3분이 걸립니다.</p>
+              </>
+            )}
+          </section>
+        )}
+        {sample && (
+          <button
+            onClick={() => setScene(structuredClone(videoFixture) as SceneDoc)}
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+            녹화 샘플 불러오기
+          </button>
+        )}
+        {page === 3 && scene && (
+          <Editor
+            key={sample ? JSON.stringify(scene) : id}
+            initial={scene}
+            busy={busy}
+            files={sample ? "" : "/api/runs" + path + "/files/"}
+            back={() => setPage(sample ? 0 : 2)}
+            save={(doc) => act(() => produce("scene", doc))}
+          />
+        )}
       </main>
-    </div>
+    </>
   );
 }
