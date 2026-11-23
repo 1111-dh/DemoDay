@@ -8,6 +8,7 @@ import { fitFrames, overlapFrames, totalFrames } from "./timing";
 import { TitleScene } from "./scenes/TitleScene";
 import { ScreenScene } from "./scenes/ScreenScene";
 import { ArchitectureScene } from "./scenes/ArchitectureScene";
+import { PointsScene } from "./scenes/PointsScene";
 import { theme } from "./theme";
 
 /** 장면 type → 컴포넌트. 새 장면 type은 스키마 → make gen → 여기 case 추가 순서로. */
@@ -20,12 +21,7 @@ function renderScene(scene: Scene, frames: number, domain?: string) {
     case "architecture":
       return <ArchitectureScene scene={scene} />;
     case "points":
-      // TODO(B, #34): 아이콘 카드 그래픽(PointsScene). 그 전까지는 제목 카드로 대신 그린다
-      return (
-        <TitleScene
-          scene={{ type: "title", durationSec: scene.durationSec, text: scene.heading, kicker: scene.kicker }}
-        />
-      );
+      return <PointsScene scene={scene} />;
     default: {
       const never: never = scene;
       throw new Error(`알 수 없는 장면 type: ${JSON.stringify(never)}`);
