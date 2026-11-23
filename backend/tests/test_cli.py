@@ -70,7 +70,7 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
     )
     seen = []
 
-    def fake(repo, url, out_dir, _llm, *, fetch):
+    def fake(repo, url, out_dir, _llm, *, fetch, **_):
         seen.append(repo)
         if "broken" in repo:
             raise RepoError("레포를 찾을 수 없습니다")
@@ -102,3 +102,37 @@ def test_cli_analyze_passes_prompt(monkeypatch, tmp_path):  # make e2e PROMPT=�
     argv = ["analyze", "--repo", "r", "--url", "u", "--out", str(out), "--prompt", "톤은 발표용"]
     assert cli.main(argv) == 0
     assert seen["prompt"] == "톤은 발표용"
+
+
+def test_warm_passes_sample_prompt(monkeypatch, tmp_path):  # 시연 때 쓸 프롬프트로 미리 캐시
+    from app import github
+    from app.github import RepoSnapshot
+
+    samples = [
+        {"repo": "https://github.com/o/r", "url": "https://a.dev", "prompt": "예시 리포트 위주"}
+    ]
+    (tmp_path / "samples.json").write_text(json.dumps(samples, ensure_ascii=False))
+    monkeypatch.setattr(github, "fetch_repo", lambda u: RepoSnapshot(owner="o", repo="r", sha="s"))
+    seen = {}
+
+    def fake(repo, url, out_dir, _llm, **kw):
+        seen.update(kw)
+        kw["fetch"](repo)
+        (out_dir / "facts.json").write_text(
+            json.dumps(
+                {
+                    "name": "n",
+                    "summary": "s",
+                    "stack": [],
+                    "app_dir": None,
+                    "framework": None,
+                    "pages": [],
+                }
+            )
+        )
+        return GOOD
+
+    monkeypatch.setattr(llm, "get_llm", lambda: None)
+    monkeypatch.setattr(scenario, "analyze", fake)
+    cli.main(["warm", "--file", str(tmp_path / "samples.json")])
+    assert seen["prompt"] == "예시 리포트 위주"

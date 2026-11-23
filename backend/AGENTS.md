@@ -15,7 +15,7 @@
 - 공급자는 `.env`의 `LLM_PROVIDER`: `groq`(무료 플랜, `GROQ_API_KEY`, 기본 모델 `openai/gpt-oss-120b`, `GROQ_MODEL`로 변경) 또는 `anthropic`(`ANTHROPIC_API_KEY`). 키가 없으면 규칙 기반 기본값만 쓴다. 구현은 `app/llm.py`의 `get_llm()`.
 - 결과는 반드시 `schema_errors(kind, data)`로 검증한다. pydantic 모델은 if/then 조건(goto→path 등)을 확인하지 못한다.
 - 위반이 있으면 에러 목록을 프롬프트에 붙여 재시도(최대 2회)하고, 그래도 실패하면 규칙 기반 기본값을 쓴다.
-- 샘플 레포 분석 결과는 `runs/cache/`에 캐싱한다. 라이브 시연 중 LLM 지연을 막기 위해서다. 시연 레포는 `backend/samples.json`에 두고 시연 전에 `make warm`으로 채운다.
+- 샘플 레포 분석 결과는 `runs/cache/`에 캐싱한다. 라이브 시연 중 LLM 지연을 막기 위해서다. 시연 레포는 `backend/samples.json`(`{repo, url, prompt?}`)에 두고 시연 전에 `make warm`으로 채운다. `prompt`가 있으면 그 프롬프트의 시나리오를 캐시하므로, 시연 때 웹에 **같은 문장**을 넣어야 즉시 나온다.
 - GitHub에 닿지 못하면(연결 실패·rate limit·5xx) 그 레포의 가장 최근 스냅샷 캐시를 대신 쓴다(`GitHubUnavailable`). 404는 캐시가 있어도 에러.
 - 프롬프트는 `app/prompts/`에 파일로 둔다(코드에 긴 문자열 금지).
 
