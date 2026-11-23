@@ -1,8 +1,8 @@
 [
   {
-    "repo": "https://github.com/kakaotechcampus-4/ktc4-kangwon-1",
-    "url": "https://ktc4-kangwon-1.vercel.app",
-    "prompt": "메인 화면과 예시 리포트 위주로 보여주세요. 상단 '리포트' 메뉴(/reports, /report)와 분석 입력 이후 화면은 빼주세요."
+    "repo": "https://github.com/J-nowcow/cs-pathfinder",
+    "url": "https://cs-pathfinder.vercel.app",
+    "prompt": "질문 목록, 오늘의 질문, 질문 지도, 용어 사전 위주로 보여주세요."
   },
   {
     "repo": "https://github.com/nuxt/movies",
