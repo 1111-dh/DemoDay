@@ -4,7 +4,7 @@
 - 입력 `Scenario`, 출력 `<runDir>/capture.json`(`Capture`)과 `<runDir>/shots/<stepId>.png`. 타입은 `@demoday/contracts`.
 - viewport는 1280x720 고정이다. 클릭 좌표는 이 viewport 기준 px이고, 렌더러가 줌·커서에 그대로 쓴다.
 - 클릭 좌표는 요소 bounding box의 중심으로 기록한다.
-- 셀렉터를 못 찾거나 타임아웃(단계당 5초)이 나도 **멈추지 않는다**. 현재 화면을 찍고 `status: "fallback"`으로 기록한 뒤 다음 단계로 간다. `goto` 응답이 400 이상(없는 페이지)이어도 fallback이다. 스크린샷까지 실패하면 빈 화면을 쓰고 fallback으로 둔다.
+- 셀렉터를 못 찾거나 타임아웃(단계당 5초)이 나도 **멈추지 않는다**. 현재 화면을 찍고 `status: "fallback"`으로 기록한 뒤 다음 단계로 간다. `goto` 응답이 400 이상(없는 페이지)이어도 fallback이다. 단계 뒤 3초가 지나도 로딩 뼈대(`skeleton`·`animate-pulse`·`shimmer`·`aria-busy`)가 화면에 남거나, `goto`가 로그인 페이지(`/login`·`/signin`)로 보내지면 보여줄 내용이 없으므로 fallback이다(scene에서 빠진다). 스크린샷까지 실패하면 빈 화면을 쓰고 fallback으로 둔다.
 - 종료 코드: 0이면 capture.json 생성(fallback 포함), 0이 아니면 생성 실패.
 - 개발 중에는 `contracts/fixtures/scenario.json`이나 직접 쓴 scenario로 실제 배포 URL에 돌려 본다. 결과는 `make validate FILES=<runDir>/capture.json`으로 확인한다.
 - 로그인: scenario에 `auth.steps`가 있으면 본 `steps` 전에 **녹화하지 않는 별도 컨텍스트**에서 실행하고, 로그인 상태(쿠키·localStorage·IndexedDB·sessionStorage)만 녹화 컨텍스트로 넘긴다. 마지막 로그인 클릭 뒤에는 페이지가 넘어갈 때까지(최대 8초) 기다린다(로그인 요청이 끊기지 않게). 스크린샷·`capture.json`에 넣지 않고, 값·URL을 로그에 쓰지 않는다. 실패해도 멈추지 않고 본 단계로 간다. 예시: `contracts/fixtures/scenario.auth.json`.

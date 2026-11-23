@@ -217,6 +217,22 @@ def describe_shots(run_dir: Path, shots: list[dict], describer: Describer) -> li
     return out
 
 
+EMPTY_SEEN = "로딩 중인 빈 화면"  # prompts/vision.md 가 빈 화면에 쓰라고 정한 문구
+
+
+def drop_empty(shots: list[dict], seen: list[str | None]) -> tuple[list[dict], list[str | None]]:
+    """이미지 모델이 빈 화면이라 한 화면은 뺀다 — 보이는 게 없는데 자막만 기능을 말하게 된다.
+
+    캡처의 로딩 뼈대 감지가 못 잡은 것(스피너 등)용. 전부 비었으면 그대로 둔다(영상은 나와야 한다).
+    """
+    kept = [
+        (s, t) for s, t in zip(shots, seen, strict=False) if not (t and t.startswith(EMPTY_SEEN))
+    ]
+    if not kept:
+        return shots, seen
+    return [s for s, _ in kept], [t for _, t in kept]
+
+
 def build_scene(
     run_dir: Path,
     total_sec: float,
@@ -258,6 +274,7 @@ def build_scene(
         seen = describe_shots(run_dir, shots, describer) if describer else None
         if seen is not None:  # 자막 점검용 — 화면마다 이미지 모델이 읽은 내용
             (run_dir / "seen.json").write_text(json.dumps(seen, ensure_ascii=False, indent=2))
+            shots, seen = drop_empty(shots, seen)
         user = _user_message(scenario, shots, facts, prompt, seen)
         copy = generate(llm, system=SYSTEM, user=user, output=SceneCopy, check=check)
     doc = assemble(scenario, shots, facts, total_sec, include_architecture, copy, **media)
