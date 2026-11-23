@@ -13,7 +13,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 > 위 블록은 Next.js가 관리한다. 팀 규칙은 이 아래에만 쓴다.
 
 - 실행: `make dev-web`(:3000). 백엔드는 `make dev-api`(:8000)이다.
-- 화면: 입력(레포 URL, 배포 URL, 최대 길이 60/90/180초 — 영상은 내용만큼 짧아질 수 있다) → 시나리오 확인(장면 순서 변경·삭제, 아키텍처 장면 포함 여부) → 미리보기 → 장면 수정(순서·길이·자막만) → 다운로드.
+- 화면: 입력(레포 URL, 배포 URL, 최대 길이 60/90/180초 — 영상은 내용만큼 짧아질 수 있다) → 시나리오 확인(장면 순서 변경·삭제) → 미리보기 → 장면 수정(순서·길이·자막만) → 다운로드.
 - 타입은 `import type { SceneDoc, Scene } from "@demoday/contracts"`만 쓴다. 응답 타입을 직접 정의하지 않는다.
 - 백엔드가 준비되기 전에는 `@demoday/contracts/fixtures/scene.json`을 import해서 UI를 개발한다.
 - 수정 결과는 scene.json 전체를 백엔드에 보내 다시 렌더한다. 보내기 전에 장면 길이가 0보다 큰지, 자막 길이가 적당한지 클라이언트에서 확인한다.
@@ -24,5 +24,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 고급 옵션: 로그인 URL 직접 입력(소셜 로그인만 있는 앱용) → `auth: {steps: [{id: 1, action: "goto", path: "<URL 경로>", caption: "로그인"}]}`. `login`과 동시에 보내지 않는다(422).
 - `login`인데 로그인 폼을 못 찾으면 400 `{detail}` — 메시지를 보여주고 고급 옵션으로 안내한다.
 - 미리보기·수정 화면은 scene의 `video`·`highlight`·`kicker`(계약 합의 후 생김)를 지우지 않고 그대로 보낸다.
-- 아키텍처 장면이 노드 2개 미만이면 보기 흉하다 — 빼거나 서비스 흐름 표로 바꾸는 것은 C가 판단.
+- 아키텍처(기술 스택) 장면은 **이번 범위에서 제외**(11/23 결정). 체크박스를 만들지 않고 build에 `includeArchitecture`를 보내지 않는다(기본 false). 아키텍처 장면 컴포넌트·추출 모듈 작업도 하지 않는다 — 웹 UI에 집중.
 - `GET /api/runs/{id}`에 `warning`이 있으면(예: 사이트가 응답하지 않아 화면 없이 만든 영상) 미리보기 위에 눈에 띄게 보여준다.

@@ -45,7 +45,8 @@ class CreateRun(BaseModel):
 
 
 class BuildRun(BaseModel):
-    includeArchitecture: bool = True
+    # 아키텍처 장면은 아직 임시 뼈대(C 미착수)라 기본 끔 — 웹에서 켤 때만
+    includeArchitecture: bool = False
     totalSec: float | None = Field(default=None, gt=0)
 
 

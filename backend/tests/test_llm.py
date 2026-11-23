@@ -146,3 +146,61 @@ def test_groq_error_log_hides_org_id(caplog):  # #36 — 로그에 Groq 조직 I
         assert llm.parse(system="s", user="u", output=Out) is None
     assert "org_01abc" not in caplog.text
     assert "413" in caplog.text and "rate_limit_exceeded" in caplog.text
+
+
+def _daily_limited():
+    import httpx
+
+    msg = (
+        "Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01abc` "
+        "on tokens per day (TPD): Limit 200000, Used 197268, Requested 4122. "
+        "Please try again in 10m0.48s."
+    )
+    return httpx.Response(429, json={"error": {"message": msg, "code": "rate_limit_exceeded"}})
+
+
+def test_daily_limit_switches_to_fallback_without_waiting():  # 11/23 TPD 소진 — 3분 기다리다 기본값
+    import json
+
+    import httpx
+
+    from app.llm import OpenAICompatLLM
+
+    models: list[str] = []
+
+    def handler(req):
+        model = json.loads(req.content)["model"]
+        models.append(model)
+        return _daily_limited() if model == "big" else _reply('{"n": 3}')
+
+    sleeps: list[float] = []
+    llm = OpenAICompatLLM(
+        base_url="https://api.test/v1",
+        api_key="k",
+        model="big",
+        fallback_models=["small"],
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=sleeps.append,
+    )
+    assert llm.parse(system="s", user="u", output=Out) == Out(n=3)
+    assert models == ["big", "small"] and sleeps == []
+    assert llm.parse(system="s", user="u", output=Out) == Out(n=3)
+    assert models[-1] == "small"  # 한 번 바꾸면 그 인스턴스는 계속 작은 모델
+
+
+def test_daily_limit_without_fallback_fails_fast(caplog):
+    sleeps: list[float] = []
+    llm = _groq(lambda req: _daily_limited(), sleeps)
+    assert llm.parse(system="s", user="u", output=Out) is None
+    assert sleeps == []  # 하루 한도는 기다려도 안 풀린다
+    assert "org_01abc" not in caplog.text
+
+
+def test_get_llm_groq_fallback_model(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.delenv("GROQ_FALLBACK_MODEL", raising=False)
+    assert get_llm().fallback_models == ["qwen/qwen3.8-27b"]
+    monkeypatch.setenv("GROQ_FALLBACK_MODEL", "")
+    assert get_llm().fallback_models == []
