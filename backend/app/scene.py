@@ -20,15 +20,17 @@ from app.scenario import with_reference
 from app.vision import Describer
 
 FPS = 30
-TITLE_SEC = 3
+TITLE_SEC = 4.5  # 오프닝 — 글자가 하나씩 올라오는 모션이 끝나고 읽을 시간
 SCREEN_SEC = 4
 FALLBACK_SEC = 2
 ARCH_SEC = 4
 ZOOM = 1.6
 W_MIN, W_MAX = 0.5, 2.0
 MAX_CAPTION = 30
-CARD_MIN, CARD_MAX = 2.0, 4.0  # 문제·정리 카드 — 글자 수만큼 읽을 시간
-MAX_CLIP_SEC = 8  # 녹화 구간이 길어도 장면은 이 이상 늘리지 않는다
+CARD_MIN, CARD_MAX = 3.0, 5.0  # 문제·정리 카드 — 글자 수만큼 읽을 시간 (11/24 너무 빠르다는 피드백)
+MAX_CLIP_SEC = 9  # 녹화 구간이 길어도 장면은 이 이상 늘리지 않는다
+SCREEN_MIN = 4.5  # 화면 장면 최소 길이 — 짧은 녹화는 느리게 재생하고 카메라가 움직인다
+FILL_MAX = 7.0  # 요청 길이를 채울 때 화면 장면 하나의 상한 (더 길면 정지 화면이 늘어진다)
 LOGIN_SEC = 2
 LOGIN_CAPTION = "테스트 계정으로 로그인"
 MAX_HIGHLIGHTS = 2
@@ -37,7 +39,7 @@ SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 
 MAX_POINT = 16  # points 항목 — 모션 그래픽용 짧은 키워드(프롬프트는 12자, 여유 4자)
-POINTS_BASE, POINT_SEC = 1.5, 1.0  # points 장면 길이: 1.5초 + 항목당 1초
+POINTS_BASE, POINT_SEC = 3.0, 1.0  # points 장면 길이: 3초 + 항목당 1초
 
 
 class PointDraft(BaseModel):
@@ -87,8 +89,8 @@ def _points(heading: str, points: list[PointDraft], kicker: str) -> dict | None:
 
 
 def _read_sec(text: str) -> float:
-    """한 줄 문장을 읽을 시간: 1.2초 + 글자당 0.09초 (2~4초)."""
-    return round(min(CARD_MAX, max(CARD_MIN, 1.2 + 0.09 * len(text))), 2)
+    """한 줄 문장을 읽을 시간: 1.8초 + 글자당 0.1초 (3~5초)."""
+    return round(min(CARD_MAX, max(CARD_MIN, 1.8 + 0.1 * len(text))), 2)
 
 
 def _card(text: str, kicker: str) -> dict:
@@ -100,6 +102,23 @@ def _highlight(caption: str, words: list[str]) -> list[str]:
     found = sorted({w.strip() for w in words if w.strip() and w.strip() in caption}, key=len)
     kept = [w for i, w in enumerate(found) if not any(w in longer for longer in found[i + 1 :])]
     return sorted(kept, key=caption.index)[:MAX_HIGHLIGHTS]
+
+
+def fill(doc: dict, total_sec: float) -> dict:
+    """내용이 요청 길이보다 짧으면 녹화가 있는 화면 장면만 늘린다(장면당 FILL_MAX초까지).
+
+    카드·모션 그래픽은 늘리면 늘어지므로 그대로 두고, 실제 화면은 카메라가 천천히 움직여 버틴다.
+    """
+    scenes = doc["scenes"]
+    screens = [sc for sc in scenes if sc["type"] == "screen" and sc.get("video")]
+    gap = total_sec - sum(sc["durationSec"] for sc in scenes)
+    while gap > 0.05 and (room := [sc for sc in screens if sc["durationSec"] < FILL_MAX]):
+        add = min(gap / len(room), min(FILL_MAX - sc["durationSec"] for sc in room))
+        for sc in room:
+            sc["durationSec"] = round(sc["durationSec"] + add, 2)
+        gap -= add * len(room)
+    total = round(sum(sc["durationSec"] for sc in scenes), 2)
+    return {**doc, "totalSec": min(total_sec, total)}
 
 
 def assemble(
@@ -147,11 +166,13 @@ def assemble(
             # weight 대신 녹화 구간 길이를 비중으로 쓴다. 전체 길이는 렌더가 totalSec 에 맞춰
             # 늘이고 줄이며, 구간과 다르면 재생 속도(0.5~2배)·마지막 프레임 정지로 맞춘다
             sec = (clip["endMs"] - clip["startMs"]) / 1000
-            screen["durationSec"] = min(MAX_CLIP_SEC, max(FALLBACK_SEC, sec))
+            weight = copy.weights[i] if copy and i < len(copy.weights) else 1
+            least = SCREEN_MIN * min(1.4, max(0.9, weight))  # 핵심 화면은 조금 더 오래
+            screen["durationSec"] = round(min(MAX_CLIP_SEC, max(least, sec)), 2)
             screen["video"] = {"src": video, "startMs": clip["startMs"], "endMs": clip["endMs"]}
         else:
             weight = copy.weights[i] if copy and i < len(copy.weights) else 1
-            screen["durationSec"] = SCREEN_SEC * _clamp(weight)
+            screen["durationSec"] = max(SCREEN_MIN, SCREEN_SEC * _clamp(weight))
         if shot.get("status", "ok") != "fallback":
             if click := shot.get("click"):
                 screen["zoom"] = {"x": click["x"], "y": click["y"], "scale": ZOOM}
@@ -171,7 +192,6 @@ def assemble(
     if arch and len(arch["nodes"]) >= 2:
         scenes.append({"type": "architecture", "durationSec": ARCH_SEC, **arch})
     # 영상 길이는 내용만큼 — 요청 길이(total_sec)는 상한. 더 길면 렌더가 비율대로 줄인다.
-    # 짧은 내용을 요청 길이까지 늘리면 카드가 늘어지고 화면이 느리게 재생돼 루즈해진다.
     content = round(sum(sc["durationSec"] for sc in scenes), 2)
     return {"fps": FPS, "totalSec": min(total_sec, content), "scenes": scenes}
 
@@ -307,6 +327,7 @@ def build_scene(
     doc = assemble(scenario, shots, facts, total_sec, include_architecture, copy, **media)
     if copy is not None and schema_errors("scene", doc):
         doc = assemble(scenario, shots, facts, total_sec, include_architecture, None, **media)
+    doc = fill(doc, total_sec)
     if errors := schema_errors("scene", doc):
         raise ValueError("scene 계약 위반: " + "; ".join(errors))
     (run_dir / "scene.json").write_text(json.dumps(doc, ensure_ascii=False, indent=2))
