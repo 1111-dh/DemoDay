@@ -4,6 +4,8 @@
 > 시연을 찍지 마세요, 레포를 넣으세요.
 > GitHub 레포 + 배포 URL → 실제 화면 기반 발표용 데모 영상. 기획안: [`docs/기획안.md`](docs/기획안.md)
 
+**[DemoDay 공개 시연 열기](https://demoday-topaz.vercel.app/)**
+
 ## 시작 (각자 1회)
 
 ```bash
