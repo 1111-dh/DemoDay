@@ -41,17 +41,23 @@ try {
     const sel = stableSelector(e);
     assert.equal(await page.locator(sel).count(), 1, sel);
   }
-  // 관찰 이름과 접근성 이름이 다를 때(aria-hidden 평점, aria-label) — 실제로 찾는 셀렉터로 바꿔 저장(#68)
-  await page.setContent(`
+  // 관찰 이름과 접근성 이름이 다를 때(aria-hidden 평점, aria-label, 안쪽 SVG 의 aria-label) — 실제로 찾는 셀렉터로 바꿔 저장(#68, #70 리뷰)
+  // 재생은 새 페이지에서 한다: 원본 DOM 을 다시 연 뒤(data-demoday-id 없음) 같은 요소를 찾아야 한다
+  const html = `
     <a href="#a">Iron Man <span aria-hidden="true">7.7</span></a>
     <button aria-label="장바구니 담기">🛒</button>
-    <a href="#b">오늘의 질문</a>`);
-  for (const e of await elements(page)) {
-    const sel = await replayableSelector(page, e);
-    const id = await page.locator(sel).evaluate((el) => el.getAttribute("data-demoday-id"));
-    assert.equal(id, String(e.id), `${e.name} → ${sel}`);
+    <button><svg aria-label="Save" role="img" width="16" height="16"><rect width="16" height="16"/></svg></button>
+    <a href="#b">오늘의 질문</a>`;
+  await page.setContent(html);
+  const recorded = [];
+  for (const e of await elements(page)) recorded.push({ e, sel: await replayableSelector(page, e) });
+  assert.ok(recorded.find((r) => r.e.name.startsWith("Iron"))!.sel.startsWith(String.raw`role=link[name=/^\s*Iron\s*Man/]`));
+  await page.setContent(html);
+  for (const { e, sel } of recorded) {
+    assert.ok(!sel.includes("data-demoday-id"), `임시 번호가 저장됨: ${sel}`);
+    const box = await page.locator(sel).boundingBox({ timeout: 1000 });
+    assert.ok(box && Math.abs(box.x - e.box.x) < 2 && Math.abs(box.y - e.box.y) < 2, `${e.name || e.role} → ${sel}`);
   }
-  assert.match(await replayableSelector(page, (await elements(page)).find((e) => e.name.startsWith("Iron"))!), /^role=link\[name=\/\^\\s\*Iron\\s\*Man\/\]/);
 } finally {
   await browser.close();
 }

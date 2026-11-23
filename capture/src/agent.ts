@@ -129,7 +129,9 @@ export async function replayableSelector(page: Page, e: UiElement): Promise<stri
       .then((v) => v === mine)
       .catch(() => false);
   const first = stableSelector(e);
-  if (await finds(first)) return first;
+  // 임시 번호(data-demoday-id)는 녹화 페이지에서만 찾아진다 — 재생용으로 검증하지 않고 접근성 이름부터(#70 리뷰)
+  const temporary = first.includes(ATTR);
+  if (!temporary && (await finds(first))) return first;
   const aria = await page
     .locator(`[${ATTR}="${mine}"]`)
     .ariaSnapshot({ timeout: 1000 })
