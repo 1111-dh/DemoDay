@@ -7,7 +7,7 @@
   - 클릭·입력까지: React Router(`lazy` import 포함) · Next.js `pages`/`app` · Vue Router · Nuxt `pages/` · SvelteKit `src/routes/`
   - Flutter web(go_router · `MaterialApp.routes`): canvas 렌더라 semantics 노드의 role 셀렉터(`role=button[name="다음"]`, `role=textbox[name="이메일"]`)를 만든다. 리터럴 문구의 `…Button` 위젯·`TextField`만. 캡처가 semantics를 켜야 클릭된다(capture/AGENTS.md)
   - 그 외(Angular·백엔드 전용 등)는 `/` 1단계 기본값
-  - UI 요소는 페이지 파일에서 import(재export 묶음은 가져온 이름만)·Nuxt 자동 import 컴포넌트를 따라가며 리터럴 문구만 모은다. `…Button`·`…Link`·`…Field` 디자인 시스템 컴포넌트와 react-hook-form `register('x')`도 인식. 다른 라우트의 화면 파일은 따라가지 않는다. Flutter는 `usePathUrlStrategy`가 없으면 `/#/x` 해시 URL.
+  - UI 요소는 페이지 파일에서 import(재export 묶음은 가져온 이름만)·Nuxt 자동 import 컴포넌트를 따라가며 리터럴 문구만 모은다. `…Button`·`…Link`·`…Field` 디자인 시스템 컴포넌트와 react-hook-form `register('x')`도 인식. 번역 함수(`$t('k')`·`t("k")`) 문구는 레포의 기본 언어 번역 파일(`locales/`·`i18n/`·`internationalization/` 등의 json, 설정의 defaultLocale → en → ko)에 있는 키만 실제 문구로 바꾼다(`app/analyze/i18n.py`). 아이콘만 있는 링크는 `title` 속성으로 잡는다. 다른 라우트의 화면 파일은 따라가지 않는다. Flutter는 `usePathUrlStrategy`가 없으면 `/#/x` 해시 URL.
 - 캡처·렌더는 subprocess로 호출한다: `pnpm --filter @demoday/capture capture <scenario> <runDir>`, `pnpm --filter @demoday/render render <runDir> <out.mp4>`.
 
 ## LLM 출력 규칙
