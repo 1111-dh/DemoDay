@@ -16,6 +16,7 @@ from app.contracts import schema_errors
 from app.contracts.scene import Icon
 from app.llm import LLM, generate
 from app.scenario import with_reference
+from app.vision import Describer
 
 FPS = 30
 TITLE_SEC = 3
@@ -173,13 +174,23 @@ def assemble(
 
 
 def _user_message(
-    scenario: dict, shots: list[dict], facts: RepoFacts, prompt: str | None = None
+    scenario: dict,
+    shots: list[dict],
+    facts: RepoFacts,
+    prompt: str | None = None,
+    seen: list[str | None] | None = None,
 ) -> str:
     steps = {s["id"]: s for s in scenario["steps"]}
-    screens = [
-        {"index": i, "status": shot.get("status", "ok"), "step": steps.get(shot["stepId"], {})}
-        for i, shot in enumerate(shots)
-    ]
+    screens = []
+    for i, shot in enumerate(shots):
+        screen = {
+            "index": i,
+            "status": shot.get("status", "ok"),
+            "step": steps.get(shot["stepId"], {}),
+        }
+        if seen and i < len(seen) and seen[i]:
+            screen["seen"] = seen[i]  # 스크린샷에 실제로 보이는 내용(이미지 모델)
+        screens.append(screen)
     data = {
         "name": facts.name,
         "summary": facts.summary,
@@ -192,8 +203,25 @@ def _user_message(
     return with_reference(user, prompt, "자막 말투와 강조할 부분에만 반영한다")
 
 
+def describe_shots(run_dir: Path, shots: list[dict], describer: Describer) -> list[str | None]:
+    """각 화면 스크린샷을 이미지 모델로 한 번에 읽는다. 파일이 없거나 못 읽으면 None."""
+    files = [run_dir / shot.get("image", "") for shot in shots]
+    present = [i for i, f in enumerate(files) if f.is_file()]
+    out: list[str | None] = [None] * len(shots)
+    if present:
+        answers = describer.describe_many([files[i].read_bytes() for i in present])
+        for i, text in zip(present, answers, strict=False):
+            out[i] = text
+    return out
+
+
 def build_scene(
-    run_dir: Path, total_sec: float, include_architecture: bool, llm: LLM | None
+    run_dir: Path,
+    total_sec: float,
+    include_architecture: bool,
+    llm: LLM | None,
+    *,
+    describer: Describer | None = None,
 ) -> dict:
     scenario = json.loads((run_dir / "scenario.json").read_text())
     capture = json.loads((run_dir / "capture.json").read_text())
@@ -225,7 +253,8 @@ def build_scene(
 
     copy = None
     if llm is not None:
-        user = _user_message(scenario, shots, facts, prompt)
+        seen = describe_shots(run_dir, shots, describer) if describer else None
+        user = _user_message(scenario, shots, facts, prompt, seen)
         copy = generate(llm, system=SYSTEM, user=user, output=SceneCopy, check=check)
     doc = assemble(scenario, shots, facts, total_sec, include_architecture, copy, **media)
     if copy is not None and schema_errors("scene", doc):

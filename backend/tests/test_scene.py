@@ -382,3 +382,36 @@ def test_check_rejects_long_point_text(tmp_path):
     llm = FakeLLM(bad, bad, bad)
     doc = build_scene(run_dir(tmp_path), 60, False, llm)
     assert len(llm.users) == 3 and all(s["type"] != "points" for s in doc["scenes"])
+
+
+class FakeDescriber:
+    def __init__(self, answers: dict[bytes, str | None]):
+        self.answers = answers
+        self.calls: list[bytes] = []
+
+    def describe_many(self, images: list[bytes]) -> list[str | None]:
+        self.calls.extend(images)
+        return [self.answers.get(i) for i in images]
+
+
+def test_scene_llm_gets_what_each_screen_shows(tmp_path):  # 자막이 추측이 아니라 실제 화면 근거로
+    run = run_dir(tmp_path)
+    one, two = (run / "shots/1.png").read_bytes(), (run / "shots/2.png").read_bytes()
+    describer = FakeDescriber({one: "검색창과 '찾기' 버튼", two: None})
+    llm = FakeLLM(SceneCopy(title="T", subtitle="", captions=["a", "b"], weights=[1, 1]))
+    build_scene(run, 60, False, llm, describer=describer)
+    screens = json.loads(llm.users[0].split("\n\n화면")[0])["screens"]
+    assert screens[0]["seen"] == "검색창과 '찾기' 버튼"
+    assert "seen" not in screens[1]  # 못 읽으면 넣지 않는다
+    assert describer.calls == [one, two]
+
+
+def test_describer_unused_without_llm_or_image(tmp_path):
+    run = run_dir(tmp_path)
+    describer = FakeDescriber({})
+    build_scene(run, 60, False, None, describer=describer)
+    assert describer.calls == []  # 자막 LLM 이 없으면 읽을 이유가 없다
+    (run / "shots/2.png").unlink()
+    llm = FakeLLM(SceneCopy(title="T", subtitle="", captions=["a", "b"], weights=[1, 1]))
+    build_scene(run, 60, False, llm, describer=describer)
+    assert len(describer.calls) == 1  # 없는 파일은 건너뛴다

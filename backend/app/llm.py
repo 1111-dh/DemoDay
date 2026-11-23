@@ -69,6 +69,36 @@ def _rate_wait(res: httpx.Response) -> float:
     return min(MAX_RATE_WAIT, sec + 0.5)
 
 
+def post_with_rate_retry(
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    body: dict,
+    sleep: Callable[[float], None],
+) -> httpx.Response | None:
+    """POST 하고 429면 안내 시간만큼 기다렸다 다시(최대 RATE_RETRIES). 200이 아니면 None."""
+    for attempt in range(RATE_RETRIES + 1):
+        try:
+            res = client.post(url, headers=headers, json=body)
+        except httpx.HTTPError as e:
+            log.warning("LLM 연결 실패: %s", type(e).__name__)
+            return None
+        if res.status_code != 429 or attempt == RATE_RETRIES:
+            break
+        wait = _rate_wait(res)
+        log.warning("LLM 분당 한도(429) — %.1f초 뒤 다시 시도", wait)
+        sleep(wait)
+    if res.status_code != 200:
+        # 본문에는 Groq 조직 ID 등이 들어 있어 로그에 남기지 않는다 — 상태 코드와 오류 코드만
+        try:
+            code = res.json().get("error", {}).get("code", "")
+        except ValueError:
+            code = ""
+        log.warning("LLM API 오류 %s %s", res.status_code, code)
+        return None
+    return res
+
+
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "openai/gpt-oss-120b"
 
@@ -103,24 +133,8 @@ class OpenAICompatLLM:
                 "json_schema": {"name": output.__name__, "schema": output.model_json_schema()},
             },
         }
-        for attempt in range(RATE_RETRIES + 1):
-            try:
-                res = self.client.post(self.url, headers=self.headers, json=body)
-            except httpx.HTTPError as e:
-                log.warning("LLM 연결 실패: %s", type(e).__name__)
-                return None
-            if res.status_code != 429 or attempt == RATE_RETRIES:
-                break
-            wait = _rate_wait(res)
-            log.warning("LLM 분당 한도(429) — %.1f초 뒤 다시 시도", wait)
-            self.sleep(wait)
-        if res.status_code != 200:
-            # 본문에는 Groq 조직 ID 등이 들어 있어 로그에 남기지 않는다 — 상태 코드와 오류 코드만
-            try:
-                code = res.json().get("error", {}).get("code", "")
-            except ValueError:
-                code = ""
-            log.warning("LLM API 오류 %s %s", res.status_code, code)
+        res = post_with_rate_retry(self.client, self.url, self.headers, body, self.sleep)
+        if res is None:
             return None
         try:
             content = res.json()["choices"][0]["message"]["content"]
