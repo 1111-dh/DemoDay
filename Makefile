@@ -53,8 +53,8 @@ e2e: export DEMODAY_PROMPT := $(value PROMPT)
 e2e: ## 전체 파이프라인. REPO=<github url> URL=<배포 url> [SEC=60] [AUTH=<auth.json>] [PROMPT='…']
 	scripts/e2e.sh "$(REPO)" "$(URL)" "$(or $(SEC),60)" "$(AUTH)"
 
-warm: ## 시연 레포 분석 캐시 채우기 (backend/samples.json, FILE=로 변경). 시연 전에 한 번
-	cd backend && uv run python -m app.cli warm $(if $(FILE),--file $(abspath $(FILE)))
+warm: ## 시연 레포 분석 캐시 채우기 (backend/samples.json, FILE=로 변경, AGENT=1 이면 에이전트 동작을 캐시). 시연 전에 한 번
+	cd backend && uv run python -m app.cli warm $(if $(FILE),--file $(abspath $(FILE))) $(if $(AGENT),--agent)
 
 e2e-render: ## fixture scene.json → runs/fixture/preview.mp4 (렌더만)
 	rm -rf runs/fixture && mkdir -p runs && cp -R contracts/fixtures runs/fixture

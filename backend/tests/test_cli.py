@@ -151,3 +151,91 @@ def test_cli_scene_architecture_is_opt_in(monkeypatch, tmp_path):
     cli.main(["scene", "--run", str(tmp_path)])
     cli.main(["scene", "--run", str(tmp_path), "--architecture"])
     assert seen == [False, True]
+
+
+def _warm_agent(monkeypatch, tmp_path, agent_ran: bool):
+    from app import github, paths, pipeline
+    from app.github import RepoSnapshot
+
+    (tmp_path / "samples.json").write_text(
+        json.dumps([{"repo": "https://github.com/o/r", "url": "https://a.dev"}])
+    )
+    monkeypatch.setattr(paths, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(github, "fetch_repo", lambda u: RepoSnapshot(owner="o", repo="r", sha="s"))
+
+    def fake_analyze(repo, url, out_dir, _llm, *, fetch, **_):
+        fetch(repo)
+        (out_dir / "facts.json").write_text(
+            json.dumps(
+                {
+                    "name": "n",
+                    "summary": "s",
+                    "stack": [],
+                    "app_dir": None,
+                    "framework": None,
+                    "pages": [],
+                }
+            )
+        )
+        from app.analyze.facts import RepoFacts
+        from app.scenario import scenario_cache_path
+
+        facts = RepoFacts.from_json((out_dir / "facts.json").read_text())
+        snap = RepoSnapshot(owner="o", repo="r", sha="s")
+        cache = scenario_cache_path(snap, url, None, facts, paths.CACHE)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(GOOD))
+        (out_dir / "scenario.json").write_text(json.dumps(GOOD))
+        return GOOD
+
+    agent_steps = {
+        "baseUrl": "https://a.dev",
+        "steps": [
+            {"id": 1, "action": "goto", "path": "/", "caption": "메인"},
+            {
+                "id": 2,
+                "action": "click",
+                "selector": 'role=link[name="CS 해설  개념을 잇는 질문 지도"]',
+                "caption": "지도",
+            },
+        ],
+    }
+    seen_env = {}
+
+    def fake_capture(run_dir):
+        import os
+
+        seen_env["mode"] = os.environ.get("CAPTURE_MODE")
+        if agent_ran:
+            (run_dir / "scenario.plan.json").write_text(json.dumps(GOOD))
+            (run_dir / "scenario.json").write_text(json.dumps(agent_steps))
+
+    monkeypatch.setattr(llm, "get_llm", lambda: None)
+    monkeypatch.setattr(scenario, "analyze", fake_analyze)
+    monkeypatch.setattr(pipeline, "run_capture", fake_capture)
+    code = cli.main(["warm", "--file", str(tmp_path / "samples.json"), "--agent"])
+    cached = [json.loads(p.read_text()) for p in (tmp_path / "cache").glob("scenario__*.json")]
+    return code, cached, agent_steps, seen_env
+
+
+def test_warm_agent_caches_what_the_agent_did(monkeypatch, tmp_path, capsys):
+    code, cached, agent_steps, env = _warm_agent(monkeypatch, tmp_path, agent_ran=True)
+    assert code == 0 and env["mode"] == "agent"
+    # 캡처가 이름에서 '→' 같은 기호를 지우면 공백 두 칸이 남아 재생 때 못 찾는다
+    # — 가장 긴 조각만 남긴다(부분 일치)
+    assert cached[0]["steps"][1]["selector"] == "role=link[name=/개념을 잇는 질문 지도/]"
+    assert len(cached[0]["steps"]) == len(agent_steps["steps"])
+    assert "에이전트" in capsys.readouterr().out
+
+
+def test_warm_agent_keeps_plan_when_agent_did_not_run(monkeypatch, tmp_path, capsys):
+    code, cached, _, _ = _warm_agent(monkeypatch, tmp_path, agent_ran=False)
+    assert cached == [GOOD]
+    assert "에이전트 실패" in capsys.readouterr().out
+
+
+def test_replayable_escapes_regex():
+    from app.cli import _replayable
+
+    assert _replayable('role=link[name="A  B (C?)"]') == r"role=link[name=/B \(C\?\)/]"
+    assert _replayable('role=link[name="오늘의 질문"]') == 'role=link[name="오늘의 질문"]'

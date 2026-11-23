@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -44,8 +45,60 @@ def analyze(
     print(f"✓ scenario {len(scenario['steps'])}단계 → {out}")
 
 
-def warm(file: str) -> int:
-    """시연 레포를 미리 분석해 runs/cache 를 채운다. 하나가 실패해도 계속. 실패가 있으면 1."""
+def _replayable(selector: str) -> str:
+    """캡처가 접근성 이름에서 '→' 같은 기호를 지워 공백 두 칸이 남은 셀렉터
+    (실제 이름 'CS 질문·해설 →개념을 이어 읽는 질문 지도')는 재생 때 못 찾는다.
+    role 셀렉터의 name="…"은 전체 일치라서, 끊긴 조각 중 가장 긴 것을 정규식(부분 일치)으로 바꾼다.
+    """
+
+    def to_regex(m: re.Match) -> str:
+        parts = [p.strip() for p in re.split(r"\s{2,}", m.group(1)) if p.strip()]
+        if not parts:
+            return m.group(0)
+        return "name=/" + re.sub(r"([\\^$.|?*+()\[\]{}/])", r"\\\1", max(parts, key=len)) + "/"
+
+    return re.sub(r'name="([^"]*\s{2,}[^"]*)"', to_regex, selector)
+
+
+def _warm_agent(run_dir: Path, snap, sample: dict, facts) -> str:
+    """에이전트 모드로 캡처를 한 번 돌리고, 에이전트가 실제로 한 동작을 시나리오 캐시에 쓴다."""
+    import os
+
+    from app import pipeline
+    from app.scenario import scenario_cache_path
+
+    before = os.environ.get("CAPTURE_MODE")
+    os.environ["CAPTURE_MODE"] = "agent"
+    try:
+        pipeline.run_capture(run_dir)
+    finally:
+        if before is None:
+            os.environ.pop("CAPTURE_MODE", None)
+        else:
+            os.environ["CAPTURE_MODE"] = before
+    # 캡처는 에이전트가 동작했을 때만 원래 계획을 scenario.plan.json 으로 남기고
+    # scenario.json 을 에이전트가 한 동작으로 덮어쓴다
+    if not (run_dir / "scenario.plan.json").exists():
+        return " (에이전트 실패 — 계획 시나리오 유지)"
+    done = json.loads((run_dir / "scenario.json").read_text())
+    done.pop("auth", None)  # 캐시에는 로그인 값을 넣지 않는다
+    for step in done["steps"]:
+        if sel := step.get("selector"):
+            step["selector"] = _replayable(sel)
+    if errors := schema_errors("scenario", done):
+        return f" (에이전트 결과 계약 위반 — 계획 유지: {errors[0]})"
+    cache = scenario_cache_path(snap, sample["url"], sample.get("prompt"), facts, paths.CACHE)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(done, ensure_ascii=False))
+    return f", 에이전트 {len(done['steps'])}동작 캐시됨"
+
+
+def warm(file: str, agent: bool = False) -> int:
+    """시연 레포를 미리 분석해 runs/cache 를 채운다. 하나가 실패해도 계속. 실패가 있으면 1.
+
+    agent 면 에이전트 녹화(#53)를 한 번 실제로 돌려, 에이전트가 한 동작을 시나리오 캐시에 덮어쓴다 —
+    시연 때는 일반 모드로 그 동작을 재생한다(빠르고 매번 같다).
+    """
     import tempfile
     import time
 
@@ -71,6 +124,7 @@ def warm(file: str) -> int:
                     s["repo"], s["url"], Path(tmp), get_llm(), prompt=s.get("prompt"), fetch=fetch
                 )
                 facts = RepoFacts.from_json((Path(tmp) / "facts.json").read_text())
+                agent_note = _warm_agent(Path(tmp), snaps[-1], s, facts) if agent else ""
         except Exception as e:  # 시연 준비 — 하나가 깨져도 나머지는 데운다
             failed += 1
             print(f"✗ {s['repo']} — {e}")
@@ -80,7 +134,7 @@ def warm(file: str) -> int:
         llm_made = cache.exists()
         kind = "LLM 시나리오 캐시됨" if llm_made else "규칙 기본값 (LLM 키 확인)"
         took = time.monotonic() - start
-        print(f"✓ {s['repo']} — {len(scenario['steps'])}단계, {kind}, {took:.1f}s")
+        print(f"✓ {s['repo']} — {len(scenario['steps'])}단계, {kind}{agent_note}, {took:.1f}s")
     print(f"{len(samples) - failed}/{len(samples)} 준비됨 → {paths.CACHE}")
     return 1 if failed else 0
 
@@ -123,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--repo", required=True)
     w = sub.add_parser("warm", help="시연 레포 분석 캐시 채우기")
     w.add_argument("--file", default=str(paths.ROOT / "backend" / "samples.json"))
+    w.add_argument("--agent", action="store_true", help="에이전트 녹화로 동작을 정해 캐시(#53)")
     args = p.parse_args(argv)
     try:
         if args.cmd == "analyze":
@@ -130,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "facts":
             facts(args.repo)
         elif args.cmd == "warm":
-            return warm(args.file)
+            return warm(args.file, args.agent)
         elif args.cmd == "goal":
             from app.pipeline import agent_capture
 
