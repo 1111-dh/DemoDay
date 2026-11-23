@@ -8,7 +8,7 @@ const scenario = {
     id: index + 1,
     action: "goto",
     caption,
-    path: index === 0 ? "/" : "/page-" + index,
+    path: ["/", "/questions", "/map", "/questions/42?tab=answers#latest"][index],
   })),
 };
 
@@ -35,11 +35,9 @@ async function verify(browser, touch) {
     await page.getByRole("button", { name: /nuxt\/movies 예시/i }).click();
     await page.getByRole("button", { name: "시나리오 확인 →" }).click();
     const handles = page.locator(".step-handle");
-    const order = () => handles.locator("b").allTextContents();
+    const order = () => handles.allInnerTexts();
     const initial = await handles.first().waitFor().then(order);
-    assert.equal(initial.length, 4);
-    assert.equal(await handles.first().locator("small").count(), 0);
-    assert.equal(await handles.nth(1).locator("small").innerText(), "/page-1");
+    assert.deepEqual(initial, scenario.steps.map((s, i) => `${i + 1}. ${s.caption}`));
     await handles.first().scrollIntoViewIfNeeded();
     const first = await handles.first().boundingBox();
     const last = await handles.last().boundingBox();

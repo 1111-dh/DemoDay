@@ -626,9 +626,6 @@ progress {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.step-handle small {
-  margin: 0;
-}
 .grip {
   flex: none;
   width: 12px;

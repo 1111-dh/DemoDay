@@ -67,7 +67,6 @@ function StepRow({
           <b>
             {index + 1}. {step.caption}
           </b>
-          {step.path && step.path !== "/" && <small>{step.path}</small>}
         </span>
       </button>
       <button
