@@ -402,7 +402,10 @@ def test_scene_llm_gets_what_each_screen_shows(tmp_path):  # 자막이 추측이
     build_scene(run, 60, False, llm, describer=describer)
     screens = json.loads(llm.users[0].split("\n\n화면")[0])["screens"]
     assert screens[0]["seen"] == "검색창과 '찾기' 버튼"
+    # 화면을 보고 읽었으면 추측 초안은 빼서 끌려가지 않게
+    assert "caption" not in screens[0]["step"]
     assert "seen" not in screens[1]  # 못 읽으면 넣지 않는다
+    assert screens[1]["step"]["caption"]  # 그때는 초안이 유일한 근거
     assert describer.calls == [one, two]
 
 
@@ -415,3 +418,11 @@ def test_describer_unused_without_llm_or_image(tmp_path):
     llm = FakeLLM(SceneCopy(title="T", subtitle="", captions=["a", "b"], weights=[1, 1]))
     build_scene(run, 60, False, llm, describer=describer)
     assert len(describer.calls) == 1  # 없는 파일은 건너뛴다
+
+
+def test_build_scene_saves_what_screens_show(tmp_path):  # 자막 점검용 — 이미지 모델이 읽은 내용
+    run = run_dir(tmp_path)
+    one = (run / "shots/1.png").read_bytes()
+    llm = FakeLLM(SceneCopy(title="T", subtitle="", captions=["a", "b"], weights=[1, 1]))
+    build_scene(run, 60, False, llm, describer=FakeDescriber({one: "검색창"}))
+    assert json.loads((run / "seen.json").read_text()) == ["검색창", None]

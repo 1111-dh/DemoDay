@@ -134,3 +134,19 @@ def test_fallback_describer_switches_when_primary_is_down():
     assert d.describe_many([png("red")]) == ["백업"]
     ok = _vision(lambda req: _reply("1: 주 모델"))
     assert FallbackDescriber(ok, Backup()).describe_many([png("red")]) == ["주 모델"]
+
+
+def test_describe_many_leaves_room_for_thinking(
+    caplog,
+):  # 11/23 Haiku: 생각 토큰에 500을 다 써서 빈 답
+    seen = {}
+
+    def handler(req):
+        seen["body"] = json.loads(req.content)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}
+        )
+
+    assert _vision(handler).describe_many([png("red")] * 2) == [None, None]
+    assert seen["body"]["max_tokens"] >= 4000
+    assert "length" in caplog.text  # 조용히 실패하지 않는다
