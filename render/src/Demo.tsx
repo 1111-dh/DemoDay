@@ -30,8 +30,10 @@ function renderScene(scene: Scene, frames: number, domain?: string) {
 }
 
 /** 들어오는 장면의 transition으로 앞 장면과 겹쳐 전환한다. fade는 앞 장면 위로 서서히 덮는 크로스페이드. */
-function presentation(kind: Scene["transition"]) {
-  return kind === "slide" ? slide({ direction: "from-right" }) : fade();
+function presentation(kind: Scene["transition"], prev?: Scene) {
+  // 해결 모션 그래픽 다음은 쓸어 넘기듯 실제 화면으로(#34)
+  const fromSolution = prev?.type === "points" && prev.kicker !== "문제";
+  return kind === "slide" || fromSolution ? slide({ direction: "from-right" }) : fade();
 }
 
 /** 배경음악: public/bgm.mp3가 있을 때만. 낮은 볼륨, 앞 1초 페이드인·끝 2초 페이드아웃. */
@@ -67,7 +69,7 @@ export const Demo: React.FC<DemoProps> = (doc) => {
           <Fragment key={i}>
             {overlap[i] > 0 && (
               <TransitionSeries.Transition
-                presentation={presentation(scene.transition)}
+                presentation={presentation(scene.transition, doc.scenes[i - 1])}
                 timing={linearTiming({ durationInFrames: overlap[i] })}
               />
             )}

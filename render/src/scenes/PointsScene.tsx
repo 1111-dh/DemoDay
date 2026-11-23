@@ -1,4 +1,4 @@
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import type { PointsScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
 
@@ -30,67 +30,155 @@ const Icon: React.FC<{ name: IconName; size: number; color: string }> = ({ name,
   </svg>
 );
 
+
+const W = 1280;
+const H = 720;
+const CIRCLE = 104;
+const GAP = 250; // 해결 줄의 아이콘 간격
+const RED = "#e0483e";
+/** 문제의 흩어진 자리(가운데 기준 px). 결정적 — 해결은 같은 자리에서 출발해 한 줄로 모인다 */
+const SCATTER = [
+  { x: -330, y: -95 },
+  { x: 250, y: -125 },
+  { x: -110, y: 135 },
+  { x: 360, y: 125 },
+];
+
+const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
+
+/** 동그라미 안 아이콘 + 아래 키워드. (x, y)는 동그라미 중심 */
+const Node: React.FC<{ x: number; y: number; icon: IconName; text: string; color: string; bg: string; scale: number; opacity: number; rotate?: number; blur?: number; label: number }> = (p) => (
+  <div style={{ position: "absolute", left: p.x - 130, top: p.y - CIRCLE / 2, width: 260, display: "flex", flexDirection: "column", alignItems: "center", opacity: p.opacity }}>
+    <div
+      style={{
+        width: CIRCLE,
+        height: CIRCLE,
+        borderRadius: "50%",
+        background: p.bg,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transform: `scale(${p.scale}) rotate(${p.rotate ?? 0}deg)`,
+        filter: p.blur ? `blur(${p.blur}px)` : undefined,
+        boxShadow: "0 6px 20px rgba(0,0,0,0.06)",
+      }}
+    >
+      <Icon name={p.icon} size={50} color={p.color} />
+    </div>
+    <div style={{ marginTop: 18, fontSize: 24, fontWeight: 600, textAlign: "center", lineHeight: 1.3, opacity: p.label }}>{p.text}</div>
+  </div>
+);
+
+/** 동그라미 오른쪽 위에 찍히는 도장(✕·?·✓). 커졌다 줄어들며 찍힌다 */
+const Stamp: React.FC<{ x: number; y: number; p: number; bg: string; mark: "x" | "?" | "check" }> = ({ x, y, p, bg, mark }) => (
+  <div
+    style={{
+      position: "absolute",
+      left: x + CIRCLE / 2 - 30,
+      top: y - CIRCLE / 2 - 8,
+      width: 38,
+      height: 38,
+      borderRadius: "50%",
+      background: bg,
+      border: "3px solid #fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      opacity: interpolate(p, [0, 0.3], [0, 1], clamp),
+      transform: `scale(${interpolate(p, [0, 1], [1.8, 1])})`,
+    }}
+  >
+    <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
+      {mark === "x" ? <path d="M6 6l12 12M18 6 6 18" /> : mark === "check" ? <path d="m5 12 5 5 9-10" /> : <path d="M9 9a3 3 0 1 1 4 2.8c-.7.3-1 .9-1 1.6V14M12 18h.01" />}
+    </svg>
+  </div>
+);
+
 /**
- * 소개 그래픽. kicker "해결"이면 주황 강조 카드를 가로로, 그 외("문제"·없음)는 카드를 세로로 나열한다.
- * "문제"는 회색 아이콘으로 톤을 낮춘다. 카드는 0.3초 뒤부터 0.15초 간격으로 하나씩 들어온다.
+ * 소개 모션 그래픽 — 글은 최소로, 움직임과 아이콘이 이야기한다(#34).
+ * - "문제": 흩어진 회색 아이콘이 흔들리며 흐려지고 빨간 ✕·?가 찍힌다 (막힌 상태)
+ * - 그 외("해결"·없음): 같은 흩어진 자리에서 한 줄로 정렬되고, 선으로 이어진 뒤 체크가 찍힌다
+ * heading은 왼쪽 위 작은 한 줄, 키워드는 아이콘 아래 작게.
  */
 export const PointsScene: React.FC<Props> = ({ scene }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const solution = scene.kicker === "해결";
+  const t = (sec: number) => sec * fps;
   const problem = scene.kicker === "문제";
-  const iconColor = problem ? theme.sub : theme.accent;
-  const iconBg = problem ? "#e7e6e1" : "#fde9dc";
+  const items = scene.items.slice(0, SCATTER.length);
+  const n = items.length;
   const head = spring({ frame, fps, config: { damping: 200 } });
-  const rise = (p: number, px = 20) => `translateY(${interpolate(p, [0, 1], [px, 0])}px)`;
+  const row = (i: number) => ({ x: W / 2 + (i - (n - 1) / 2) * GAP, y: H / 2 + 10 });
+  const scatter = (i: number) => ({ x: W / 2 + SCATTER[i].x, y: H / 2 + 20 + SCATTER[i].y });
+
+  // 해결: 줄 정렬이 끝나면 선이 왼쪽부터 그어진다
+  const line = interpolate(frame, [t(1.0), t(1.6)], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
+  const first = row(0);
+  const last = row(n - 1);
 
   return (
-    <AbsoluteFill
-      style={{
-        background: theme.bg,
-        color: theme.ink,
-        fontFamily: theme.font,
-        ...theme.keepAll,
-        justifyContent: "center",
-        padding: "0 140px",
-      }}
-    >
-      {scene.kicker && (
-        <div style={{ fontSize: 22, fontWeight: 600, color: problem ? theme.sub : theme.accent, opacity: head, marginBottom: 16 }}>
-          {scene.kicker}
-        </div>
-      )}
-      <div style={{ fontSize: 52, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.25, opacity: head, transform: rise(head) }}>
-        {scene.heading}
+    <AbsoluteFill style={{ background: theme.bg, color: theme.ink, fontFamily: theme.font, ...theme.keepAll }}>
+      <div style={{ position: "absolute", left: 80, top: 64, display: "flex", alignItems: "baseline", gap: 16, opacity: head }}>
+        {scene.kicker && <span style={{ fontSize: 22, fontWeight: 700, color: problem ? RED : theme.accent }}>{scene.kicker}</span>}
+        <span style={{ fontSize: 26, fontWeight: 600, color: theme.sub }}>{scene.heading}</span>
       </div>
-      <div style={{ display: "flex", flexDirection: solution ? "row" : "column", gap: solution ? 24 : 16, marginTop: 44, maxWidth: solution ? undefined : 820 }}>
-        {scene.items.map((item, i) => {
-          const p = spring({ frame, fps, delay: (0.3 + 0.15 * i) * fps, config: { damping: 200 } });
+
+      {!problem && n > 1 && (
+        <div
+          style={{
+            position: "absolute",
+            left: first.x,
+            top: first.y - 2,
+            width: (last.x - first.x) * line,
+            height: 4,
+            borderRadius: 2,
+            background: theme.accent,
+            opacity: 0.5,
+          }}
+        />
+      )}
+
+      {items.map((item, i) => {
+        const pop = spring({ frame, fps, delay: t(0.1 + 0.12 * i), config: { damping: 14 } });
+        if (problem) {
+          const { x, y } = scatter(i);
+          // 흔들림: 프레임 기반 사인 — 결정적
+          const dx = Math.sin(frame / 5 + i * 2.1) * 5;
+          const dy = Math.cos(frame / 7 + i * 1.3) * 4;
+          const fade = interpolate(frame, [t(1.2), t(2.6)], [0, 1], clamp);
+          const stamp = spring({ frame, fps, delay: t(0.9 + 0.25 * i), config: { damping: 12 } });
           return (
-            <div
-              key={i}
-              style={{
-                flex: solution ? 1 : undefined,
-                display: "flex",
-                flexDirection: solution ? "column" : "row",
-                alignItems: solution ? "flex-start" : "center",
-                gap: solution ? 20 : 22,
-                padding: solution ? "28px 28px 32px" : "18px 24px",
-                background: "#fff",
-                borderRadius: 16,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 6px 20px rgba(0,0,0,0.05)",
-                opacity: p,
-                transform: rise(p, 28),
-              }}
-            >
-              <div style={{ width: 56, height: 56, borderRadius: 14, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon name={item.icon} size={30} color={iconColor} />
-              </div>
-              <div style={{ fontSize: solution ? 28 : 30, fontWeight: 600, lineHeight: 1.35 }}>{item.text}</div>
+            <div key={i}>
+              <Node
+                x={x + dx}
+                y={y + dy}
+                icon={item.icon}
+                text={item.text}
+                color={theme.sub}
+                bg="#e7e6e1"
+                scale={pop}
+                opacity={interpolate(fade, [0, 1], [1, 0.55])}
+                rotate={Math.sin(frame / 9 + i) * 7}
+                blur={fade * 1.5}
+                label={pop}
+              />
+              <Stamp x={x + dx} y={y + dy} p={stamp} bg={RED} mark={i % 2 ? "?" : "x"} />
             </div>
           );
-        })}
-      </div>
+        }
+        const from = scatter(i);
+        const to = row(i);
+        const go = spring({ frame, fps, delay: t(0.25 + 0.06 * i), config: { damping: 200 }, durationInFrames: t(0.8) });
+        const x = interpolate(go, [0, 1], [from.x, to.x]);
+        const y = interpolate(go, [0, 1], [from.y, to.y]);
+        const check = spring({ frame, fps, delay: t(1.5 + 0.15 * i), config: { damping: 12 } });
+        return (
+          <div key={i}>
+            <Node x={x} y={y} icon={item.icon} text={item.text} color={theme.accent} bg="#fde9dc" scale={pop} opacity={1} label={go} />
+            <Stamp x={x} y={y} p={check} bg="#2f9e5b" mark="check" />
+          </div>
+        );
+      })}
     </AbsoluteFill>
   );
 };
