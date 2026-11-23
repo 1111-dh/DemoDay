@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -99,16 +100,41 @@ def _summary(e: Exception) -> str:
     return f"{head} {detail.removeprefix('✗').strip()}".strip()[:200]
 
 
+SITE_DOWN = "배포 주소에 접속하지 못했어요(모든 페이지 이동 실패)"
+
+
+def _site_unreachable(d: Path) -> bool:
+    """페이지 이동(goto)이 하나도 성공하지 못했다 — 사이트가 죽어 있다.
+
+    이때 오류 페이지(Vercel 404 등)에서 한 scroll·click 이 'ok' 로 남아 오류 화면이 영상에
+    들어간다(11/24 실측). 이동이 하나라도 됐으면 정상으로 본다.
+    """
+    try:
+        steps = json.loads((d / "scenario.json").read_text())["steps"]
+        shots = json.loads((d / "capture.json").read_text())["shots"]
+    except (OSError, ValueError, KeyError):
+        return False
+    gotos = {s["id"] for s in steps if s.get("action") == "goto"}
+    tried = [s for s in shots if s.get("stepId") in gotos]
+    return bool(tried) and all(
+        s.get("status", "ok") != "ok" for s in tried
+    )  # status 없으면 ok(계약)
+
+
 def _capture_or_empty(rid: str, d: Path) -> None:
-    """캡처가 통째로 실패해도(사이트 응답 없음 등) 영상은 나오게 — 카드·아키텍처로만."""
+    """캡처가 통째로 실패해도(사이트 응답 없음 등) 영상은 나오게 — 카드만으로."""
+    hint = "실제 화면 없이 만들었어요. 사이트가 열리는지 확인하세요."
     try:
         run_capture(d)
     except Exception as e:
         log.warning("캡처 실패 %s — 화면 없이 계속: %s", rid, e)
         runs.write_json(d / "capture.json", EMPTY_CAPTURE)
-        msg = _summary(e)
-        hint = "실제 화면 없이 만들었어요. 사이트가 열리는지 확인하세요."
-        runs.write_status(rid, warning=f"{msg} — {hint}")
+        runs.write_status(rid, warning=f"{_summary(e)} — {hint}")
+        return
+    if _site_unreachable(d):
+        log.warning("사이트 접속 실패 %s — 화면 없이 계속", rid)
+        runs.write_json(d / "capture.json", EMPTY_CAPTURE)
+        runs.write_status(rid, warning=f"{SITE_DOWN} — {hint}")
 
 
 def build(rid: str, total_sec: float, include_architecture: bool) -> None:
