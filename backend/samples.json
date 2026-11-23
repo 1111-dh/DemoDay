@@ -1,4 +1,11 @@
 [
-  {"repo": "https://github.com/kakaotechcampus-4/ktc4-kyungpook-3", "url": "https://managers-manager.duckdns.org"},
-  {"repo": "https://github.com/kakaotechcampus-4/ktc4-kyungpook-4", "url": "https://safebrother.duckdns.org"}
+  {
+    "repo": "https://github.com/kakaotechcampus-4/ktc4-kangwon-1",
+    "url": "https://ktc4-kangwon-1.vercel.app",
+    "prompt": "메인 화면과 예시 리포트 위주로 보여주세요. 분석 입력 이후 화면과 /report 페이지는 빼주세요."
+  },
+  {
+    "repo": "https://github.com/nuxt/movies",
+    "url": "https://movies.nuxt.space"
+  }
 ]
