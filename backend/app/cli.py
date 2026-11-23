@@ -134,6 +134,12 @@ def warm(file: str, agent: bool = False) -> int:
         llm_made = cache.exists()
         kind = "LLM 시나리오 캐시됨" if llm_made else "규칙 기본값 (LLM 키 확인)"
         took = time.monotonic() - start
+        if agent and not agent_note.startswith(
+            ", 에이전트"
+        ):  # 에이전트를 원했는데 못 했으면 실패로 센다
+            failed += 1
+            print(f"✗ {s['repo']} — 에이전트 캐시 실패{agent_note}, {took:.1f}s")
+            continue
         print(f"✓ {s['repo']} — {len(scenario['steps'])}단계, {kind}{agent_note}, {took:.1f}s")
     print(f"{len(samples) - failed}/{len(samples)} 준비됨 → {paths.CACHE}")
     return 1 if failed else 0

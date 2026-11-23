@@ -230,6 +230,7 @@ def test_warm_agent_caches_what_the_agent_did(monkeypatch, tmp_path, capsys):
 
 def test_warm_agent_keeps_plan_when_agent_did_not_run(monkeypatch, tmp_path, capsys):
     code, cached, _, _ = _warm_agent(monkeypatch, tmp_path, agent_ran=False)
+    assert code == 1  # 에이전트 캐시를 원했는데 못 했으면 성공처럼 끝나지 않는다(C 리뷰 #68)
     assert cached == [GOOD]
     assert "에이전트 실패" in capsys.readouterr().out
 

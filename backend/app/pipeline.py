@@ -42,11 +42,10 @@ def agent_capture(run_dir: Path) -> tuple[list[str], dict[str, str] | None]:
     facts = RepoFacts.from_json((run_dir / "facts.json").read_text())
     prompt_file = run_dir / "prompt.txt"
     prompt = prompt_file.read_text() if prompt_file.exists() else None
+    # 에이전트 명령은 캡처 기본값(uv run --directory backend, Windows 호환 #70)을 쓴다
     env = {
         **os.environ,
         "DEMODAY_RUN_DIR": str(run_dir.resolve()),
-        # 캡처의 작업 폴더(capture/)에서 띄워지므로 backend 로 들어가서 실행한다(app 모듈 경로)
-        "DEMODAY_AGENT_CMD": f"cd '{paths.ROOT / 'backend'}' && uv run python -m app.agent",
     }
     return ["--agent", "--goal", goal_for(facts, prompt)], env
 
