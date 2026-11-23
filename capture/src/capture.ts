@@ -62,6 +62,32 @@ async function enableFlutterSemantics(page: Page) {
   await page.locator("flt-semantics-placeholder").first().dispatchEvent("click", undefined, { timeout: 1000 }).catch(() => {});
 }
 
+/** 로딩 뼈대(skeleton)가 이만큼 기다려도 남아 있으면 빈 화면으로 보고 fallback — 영상에서 빠진다 */
+const LOADING_WAIT_MS = 3000;
+const LOGIN_PATH = /\/(login|signin|sign-in)\b/i;
+const SKELETON = '[class*="skeleton" i], [class*="animate-pulse"], [class*="shimmer" i], [aria-busy="true"]';
+
+/**
+ * 화면 안에 로딩 뼈대가 보이는 동안 기다리고, 끝까지 남으면 true.
+ * 상태가 필요한 페이지(/report 등)를 URL로 바로 열면 데이터가 없어 뼈대만 남는다(채움 11/23 실측).
+ * ponytail: 클래스 이름 휴리스틱 — 일부 카드만 로딩 중인 정상 화면도 빠질 수 있다. 오탐이 보이면 화면 대비 뼈대 면적으로 바꾼다.
+ */
+async function stillLoading(page: Page): Promise<boolean> {
+  const visible = () =>
+    page
+      .evaluate((sel) => {
+        return [...document.querySelectorAll(sel)].some((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
+        });
+      }, SKELETON)
+      .catch(() => false);
+  for (const end = Date.now() + LOADING_WAIT_MS; Date.now() < end; await sleep(250)) {
+    if (!(await visible())) return false;
+  }
+  return visible();
+}
+
 /** 실패하면 기본 타임아웃으로 한 번 더 찍는다. */
 async function snap(page: Page, path: string) {
   await page.screenshot({ path, timeout: STEP_TIMEOUT }).catch(() => page.screenshot({ path }));
@@ -255,9 +281,17 @@ async function main(scenarioPath: string, runDir: string) {
         taken = r.taken ?? false;
         // 클릭·이동 후 화면이 안정될 때까지 잠깐 기다린다(실패해도 무시)
         await page.waitForLoadState("networkidle", { timeout: 2000 }).catch(() => {});
+        if (await stillLoading(page)) throw new Error("로딩 화면에서 멈춤 — 보여줄 내용 없음");
+        // 로그인이 필요한 페이지는 로그인 화면으로 보내진다 — 자막(원래 페이지 설명)과 화면이 어긋난다
+        if (step.action === "goto" && !LOGIN_PATH.test(step.path!) && LOGIN_PATH.test(new URL(page.url()).pathname + new URL(page.url()).hash)) {
+          throw new Error("로그인 화면으로 이동함");
+        }
         shot = { stepId: step.id, image, click: r.click, status: "ok", atMs: Date.now() - t0 };
         if (recording) {
           await sleep(HOLD_MS); // 결과 화면을 더 녹화
+          // 클릭 단계는 클릭 직전에 찍혔다 — 녹화가 있으면 장면은 영상이 그리므로, 스크린샷(대체 화면·이미지 모델 근거)을
+          // clip 마지막 프레임과 같게 덮어쓴다. 실패하면 클릭 직전 화면을 그대로 둔다
+          if (taken) await snap(page, c.shotPath).catch(() => {});
           // 앞 clip 끝과 겹치지 않게(겹치면 장면이 바뀔 때 앞 장면 끝이 되감겨 보인다)
           const startMs = r.clipStart !== undefined ? r.clipStart - t0 : Math.max(prevEnd, stepStart - t0 - CLIP_PAD_MS);
           shot.clip = { startMs, endMs: Date.now() - t0 };

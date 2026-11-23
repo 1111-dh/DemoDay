@@ -59,7 +59,7 @@ export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames }
         <AddressBar domain={domain} />
         <div style={{ width: W * S, height: H * S, overflow: "hidden", position: "relative" }}>
           <div style={{ width: W, height: H, transform: `scale(${S})`, transformOrigin: "0 0" }}>
-            <Screen scene={scene} media={m} />
+            <Screen scene={scene} media={m} total={durationInFrames} />
           </div>
         </div>
       </div>
@@ -72,7 +72,7 @@ export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames }
  * 캡처 좌표계(1280x720) 안: 화면(녹화 구간 또는 정지 화면) + 커서 + 클릭 하이라이트 + 줌.
  * 녹화를 빠르게/느리게 재생하면 클릭 시각도 같이 움직이므로 커서 박자를 재생 속도로 나눈다.
  */
-const Screen: React.FC<{ scene: T; media: Media | null }> = ({ scene, media: m }) => {
+const Screen: React.FC<{ scene: T; media: Media | null; total: number }> = ({ scene, media: m, total }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = (sec: number) => (sec * fps) / (m?.rate ?? 1);
@@ -88,7 +88,9 @@ const Screen: React.FC<{ scene: T; media: Media | null }> = ({ scene, media: m }
 
   const zoom = scene.zoom;
   const z = zoom ? spring({ frame, fps, delay: cursor ? s(1) : s(0.3), config: { damping: 200 }, durationInFrames: s(1) }) : 0;
-  const scale = zoom ? interpolate(z, [0, 1], [1, zoom.scale]) : 1;
+  // 녹화가 있으면 끝 1.2초(결과 화면)는 다시 전체로 — 확대한 채면 결과가 화면 가장자리에서 잘린다(#34, nuxt 검색 결과)
+  const out = zoom && m ? spring({ frame, fps, delay: total - s(1.2), config: { damping: 200 }, durationInFrames: s(0.7) }) : 0;
+  const scale = zoom ? 1 + (zoom.scale - 1) * z * (1 - out) : 1;
 
   return (
     // 줌 기준점을 원점으로 잡으면 scale ≥ 1에서도 화면이 비지 않는다

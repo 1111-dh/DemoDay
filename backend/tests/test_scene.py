@@ -132,6 +132,15 @@ def test_keep_shots_drops_failed_steps():  # 실패한 동작을 성공처럼 �
     assert [s["stepId"] for s in kept] == [1, 4]
 
 
+def test_drop_empty_removes_loading_screens():  # 이미지 모델이 빈 화면이라 한 화면은 뺀다
+    from app.scene import drop_empty
+
+    shots = _shots("ok", "ok", "ok")
+    kept, seen = drop_empty(shots, ["'홈' 제목", "로딩 중인 빈 화면", None])
+    assert [s["stepId"] for s in kept] == [1, 3] and seen == ["'홈' 제목", None]
+    assert drop_empty(shots[:1], ["로딩 중인 빈 화면"]) == (shots[:1], ["로딩 중인 빈 화면"])
+
+
 def test_all_fallback_keeps_first(scenario):
     from app.scene import keep_shots
 
