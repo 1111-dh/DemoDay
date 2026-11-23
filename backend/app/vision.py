@@ -34,7 +34,7 @@ from app.llm import (
 
 GROQ_VISION_MODEL = "qwen/qwen3.8-27b"  # Groq 무료 플랜에서 이미지 입력이 되는 모델(11/23 확인)
 MAX_SEEN = 80
-MAX_TOKENS = 4096
+MAX_TOKENS = 16384  # 화면 11개(콜라주 3장)면 생각 토큰이 4096을 넘어 빈 답(11/24 운영 실측)
 # 캡처 원본 크기 그대로 2x2(2560x1440) — Groq 토큰 추정은 이미지 크기와 무관(11/23 실측)
 TILE = (1280, 720)
 PER_IMAGE = 4
