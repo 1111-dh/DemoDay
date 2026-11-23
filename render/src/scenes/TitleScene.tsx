@@ -4,14 +4,17 @@ import { theme } from "../theme";
 
 type Props = { scene: T };
 
-/** kicker가 있으면 장 구분 카드(작은 번호 + 큰 문장, 왼쪽 정렬), 없으면 가운데 타이틀. */
+/**
+ * 왼쪽 정렬 편집 레이아웃. kicker가 있으면 장 구분 카드(작은 주황 라벨 + 문장),
+ * 없으면 오프닝 타이틀(짧은 주황 막대 + 큰 제목 + 부제).
+ */
 export const TitleScene: React.FC<Props> = ({ scene }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = spring({ frame, fps, config: { damping: 200 } });
-  const sub = spring({ frame, fps, delay: 0.35 * fps, config: { damping: 200 } });
-  const bar = spring({ frame, fps, delay: 0.15 * fps, config: { damping: 200 } });
-  const rise = (p: number) => `translateY(${interpolate(p, [0, 1], [24, 0])}px)`;
+  const sub = spring({ frame, fps, delay: 0.3 * fps, config: { damping: 200 } });
+  const mark = spring({ frame, fps, delay: 0.1 * fps, config: { damping: 200 } });
+  const rise = (p: number) => `translateY(${interpolate(p, [0, 1], [20, 0])}px)`;
   const chapter = Boolean(scene.kicker);
 
   return (
@@ -22,22 +25,32 @@ export const TitleScene: React.FC<Props> = ({ scene }) => {
         fontFamily: theme.font,
         ...theme.keepAll,
         justifyContent: "center",
-        alignItems: chapter ? "flex-start" : "center",
-        textAlign: chapter ? "left" : "center",
-        padding: chapter ? "0 140px" : 0,
+        alignItems: "flex-start",
+        padding: "0 140px",
       }}
     >
-      {chapter && (
-        <div style={{ fontSize: 30, fontWeight: 700, color: theme.accent, letterSpacing: 2, opacity: bar, marginBottom: 18 }}>
-          {scene.kicker}
-        </div>
+      {chapter ? (
+        <div style={{ fontSize: 22, fontWeight: 600, color: theme.accent, opacity: mark, marginBottom: 20 }}>{scene.kicker}</div>
+      ) : (
+        <div style={{ width: 56 * mark, height: 6, borderRadius: 3, background: theme.accent, marginBottom: 32 }} />
       )}
-      <div style={{ fontSize: chapter ? 64 : 84, fontWeight: 800, letterSpacing: -1.5, lineHeight: 1.2, maxWidth: 1000, opacity: t, transform: rise(t) }}>
+      <div
+        style={{
+          fontSize: chapter ? 64 : 72,
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          lineHeight: 1.25,
+          maxWidth: 1000,
+          opacity: t,
+          transform: rise(t),
+        }}
+      >
         {scene.text}
       </div>
-      {!chapter && <div style={{ width: 120 * bar, height: 6, borderRadius: 3, background: theme.accent, margin: "28px 0" }} />}
       {scene.subtitle && (
-        <div style={{ fontSize: 34, color: theme.sub, marginTop: chapter ? 24 : 0, opacity: sub, transform: rise(sub) }}>{scene.subtitle}</div>
+        <div style={{ fontSize: 30, fontWeight: 500, lineHeight: 1.35, color: theme.sub, marginTop: 28, maxWidth: 1000, opacity: sub, transform: rise(sub) }}>
+          {scene.subtitle}
+        </div>
       )}
     </AbsoluteFill>
   );

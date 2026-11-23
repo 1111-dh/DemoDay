@@ -1,7 +1,7 @@
 import { Composition } from "remotion";
 import fixture from "@demoday/contracts/fixtures/scene.json";
 import { Demo, type DemoProps } from "./Demo";
-import { fitFrames } from "./timing";
+import { totalFrames } from "./timing";
 
 export const Root: React.FC = () => (
   <Composition
@@ -14,7 +14,7 @@ export const Root: React.FC = () => (
     defaultProps={fixture as DemoProps}
     calculateMetadata={({ props }) => ({
       fps: props.fps,
-      durationInFrames: fitFrames(props).reduce((a, b) => a + b, 0),
+      durationInFrames: totalFrames(props),
     })}
   />
 );

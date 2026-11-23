@@ -1,6 +1,10 @@
-import { AbsoluteFill, Audio, getStaticFiles, interpolate, Series, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { Fragment } from "react";
+import { AbsoluteFill, Audio, getStaticFiles, interpolate, useVideoConfig } from "remotion";
+import { linearTiming, TransitionSeries } from "@remotion/transitions";
+import { fade } from "@remotion/transitions/fade";
+import { slide } from "@remotion/transitions/slide";
 import type { Scene, SceneDoc } from "@demoday/contracts";
-import { fitFrames } from "./timing";
+import { fitFrames, overlapFrames, totalFrames } from "./timing";
 import { TitleScene } from "./scenes/TitleScene";
 import { ScreenScene } from "./scenes/ScreenScene";
 import { ArchitectureScene } from "./scenes/ArchitectureScene";
@@ -22,15 +26,10 @@ function renderScene(scene: Scene, frames: number, domain?: string) {
   }
 }
 
-/** 장면 진입 전환. ponytail: 들어오는 장면만 움직이는 방식이라 앞 장면과 겹치는 크로스페이드는 없다. 필요해지면 @remotion/transitions의 TransitionSeries로 바꾼다. */
-const Enter: React.FC<{ kind: Scene["transition"]; children: React.ReactNode }> = ({ kind = "fade", children }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const p = spring({ frame, fps, config: { damping: 200 }, durationInFrames: Math.round(0.5 * fps) });
-  const style =
-    kind === "fade" ? { opacity: p } : kind === "slide" ? { transform: `translateX(${interpolate(p, [0, 1], [100, 0])}%)` } : {};
-  return <AbsoluteFill style={{ background: theme.bg }}><AbsoluteFill style={style}>{children}</AbsoluteFill></AbsoluteFill>;
-};
+/** 들어오는 장면의 transition으로 앞 장면과 겹쳐 전환한다. fade는 앞 장면 위로 서서히 덮는 크로스페이드. */
+function presentation(kind: Scene["transition"]) {
+  return kind === "slide" ? slide({ direction: "from-right" }) : fade();
+}
 
 /** 배경음악: public/bgm.mp3가 있을 때만. 낮은 볼륨, 앞 1초 페이드인·끝 2초 페이드아웃. */
 const Bgm: React.FC<{ total: number }> = ({ total }) => {
@@ -57,16 +56,25 @@ export type DemoProps = SceneDoc & { domain?: string } & Record<string, unknown>
 
 export const Demo: React.FC<DemoProps> = (doc) => {
   const frames = fitFrames(doc);
+  const overlap = overlapFrames(doc, frames);
   return (
     <AbsoluteFill style={{ background: theme.bg }}>
-      <Series>
+      <TransitionSeries>
         {doc.scenes.map((scene, i) => (
-          <Series.Sequence key={i} durationInFrames={frames[i]}>
-            <Enter kind={scene.transition}>{renderScene(scene, frames[i], doc.domain)}</Enter>
-          </Series.Sequence>
+          <Fragment key={i}>
+            {overlap[i] > 0 && (
+              <TransitionSeries.Transition
+                presentation={presentation(scene.transition)}
+                timing={linearTiming({ durationInFrames: overlap[i] })}
+              />
+            )}
+            <TransitionSeries.Sequence durationInFrames={frames[i]}>
+              {renderScene(scene, frames[i], doc.domain)}
+            </TransitionSeries.Sequence>
+          </Fragment>
         ))}
-      </Series>
-      <Bgm total={frames.reduce((a, b) => a + b, 0)} />
+      </TransitionSeries>
+      <Bgm total={totalFrames(doc)} />
     </AbsoluteFill>
   );
 };
