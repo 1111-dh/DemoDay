@@ -24,8 +24,16 @@ stage() {  # stage <이름> <검증할 파일|-> <명령...>
 
 stage analyze "$RUN/scenario.json" \
   bash -c 'cd "$1/backend" && uv run python -m app.cli analyze --repo "$2" --url "$3" --out "$4/scenario.json" ${5:+--auth "$5"} ${6:+--prompt "$6"}' _ "$ROOT" "$REPO" "$URL" "$RUN" "$AUTH_ABS" "$PROMPT"
+# 에이전트 녹화 모드(#53): CAPTURE_MODE=agent make e2e … — 화면을 보고 고른 동작으로 녹화
+AGENT_ARGS=()
+if [ "${CAPTURE_MODE:-}" = agent ]; then
+  GOAL=$(cd "$ROOT/backend" && uv run python -m app.cli goal --run "$RUN")
+  export DEMODAY_RUN_DIR="$RUN" DEMODAY_AGENT_CMD="cd '$ROOT/backend' && uv run python -m app.agent"
+  AGENT_ARGS=(--agent --goal "$GOAL")
+  echo "  에이전트 목표: $GOAL"
+fi
 stage capture "$RUN/capture.json" \
-  pnpm --silent --filter @demoday/capture capture "$RUN/scenario.json" "$RUN"
+  pnpm --silent --filter @demoday/capture capture "$RUN/scenario.json" "$RUN" ${AGENT_ARGS[@]+"${AGENT_ARGS[@]}"}
 stage scene "$RUN/scene.json" \
   bash -c "cd '$ROOT/backend' && uv run python -m app.cli scene --run '$RUN' --total-sec '$SEC'"
 stage render - \
