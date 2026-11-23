@@ -26,7 +26,7 @@
 |---|---|---|---|
 | POST | `/api/runs` | `{repo, url, totalSec?=60, prompt?(≤500자), login?: {username, password} \| auth?}` | `{id, scenario}` — 분석은 동기(캐시면 즉시). 잘못된 레포 → 400 `{detail: "메시지"}`, 잘못된 `auth`·`login`과 `auth` 동시·긴 `prompt` → 422, `login`인데 로그인 폼 없음 → 400 |
 | PUT | `/api/runs/{id}/scenario` | Scenario JSON | `{ok: true}`. 스키마 위반 → 422 `{detail: [에러…]}` |
-| POST | `/api/runs/{id}/build` | `{includeArchitecture?=true, totalSec?}` | `{id, stage: "queued"}` — 백그라운드로 capture → scene → render |
+| POST | `/api/runs/{id}/build` | `{includeArchitecture?=false, totalSec?}` | `{id, stage: "queued"}` — 백그라운드로 capture → scene → render |
 | GET | `/api/runs/{id}` | — | `{id, stage, error?, warning?, updatedAt, repo, url, totalSec, scenario?, scene?, videoUrl?}` |
 | PUT | `/api/runs/{id}/scene` | SceneDoc JSON | `{id, stage: "queued"}` — 저장 후 백그라운드 재렌더. 위반 → 422 |
 | GET | `/api/runs/{id}/files/{path}` | — | run 디렉터리 파일(`shots/2.png`, `preview.mp4`). 밖 경로·없는 파일 → 404 |

@@ -1,7 +1,7 @@
 """파이프라인 단계별 CLI — scripts/e2e.sh 와 FastAPI가 같은 함수를 호출한다.
 
   uv run python -m app.cli analyze --repo <github> --url <배포> --out runs/<id>/scenario.json
-  uv run python -m app.cli scene   --run runs/<id> [--total-sec 60] [--no-architecture]
+  uv run python -m app.cli scene   --run runs/<id> [--total-sec 60] [--architecture]
   uv run python -m app.cli facts   --repo <github>        # 분석 결과(RepoFacts)만 출력
   uv run python -m app.cli warm    [--file samples.json]  # 시연 레포 분석 캐시 채우기 (make warm)
 
@@ -84,7 +84,7 @@ def warm(file: str) -> int:
     return 1 if failed else 0
 
 
-def scene(run: str, total_sec: float, include_architecture: bool = True) -> None:
+def scene(run: str, total_sec: float, include_architecture: bool = False) -> None:
     from app.llm import get_llm
     from app.scene import build_scene
     from app.vision import get_describer
@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("scene")
     s.add_argument("--run", required=True)
     s.add_argument("--total-sec", type=float, default=60)
-    s.add_argument("--no-architecture", action="store_true")
+    s.add_argument("--architecture", action="store_true", help="마지막에 아키텍처 장면 넣기")
     f = sub.add_parser("facts")
     f.add_argument("--repo", required=True)
     w = sub.add_parser("warm", help="시연 레포 분석 캐시 채우기")
@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "warm":
             return warm(args.file)
         else:
-            scene(args.run, args.total_sec, not args.no_architecture)
+            scene(args.run, args.total_sec, args.architecture)
     except (RepoError, ContractError) as e:
         print(f"✗ {e}", file=sys.stderr)
         return 1

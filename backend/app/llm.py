@@ -55,6 +55,12 @@ class ClaudeLLM:
 RATE_RETRIES = 2  # 429(분당 토큰 한도)면 안내 시간만큼 기다렸다 같은 요청을 다시 보낸다
 MAX_RATE_WAIT = 30.0
 _TRY_AGAIN = re.compile(r"try again in ([\d.]+)\s*(ms|s)\b", re.IGNORECASE)
+_DAILY = re.compile(r"per day|\(TPD\)|\(RPD\)", re.IGNORECASE)
+
+
+def is_daily_limit(res: httpx.Response) -> bool:
+    """429 중 하루 한도(TPD·RPD) — 기다려도 몇 분~몇 시간은 안 풀린다."""
+    return res.status_code == 429 and bool(_DAILY.search(res.text))
 
 
 def _rate_wait(res: httpx.Response) -> float:
@@ -75,32 +81,43 @@ def post_with_rate_retry(
     headers: dict[str, str],
     body: dict,
     sleep: Callable[[float], None],
+    *,
+    keep_daily: bool = False,
 ) -> httpx.Response | None:
-    """POST 하고 429면 안내 시간만큼 기다렸다 다시(최대 RATE_RETRIES). 200이 아니면 None."""
+    """POST 하고 429면 안내 시간만큼 기다렸다 다시(최대 RATE_RETRIES). 200이 아니면 None.
+
+    하루 한도(TPD) 429는 기다리지 않는다. keep_daily 면 그 응답을 돌려줘 호출부가 모델을 바꾼다.
+    """
     for attempt in range(RATE_RETRIES + 1):
         try:
             res = client.post(url, headers=headers, json=body)
         except httpx.HTTPError as e:
             log.warning("LLM 연결 실패: %s", type(e).__name__)
             return None
-        if res.status_code != 429 or attempt == RATE_RETRIES:
+        if res.status_code != 429 or attempt == RATE_RETRIES or is_daily_limit(res):
             break
         wait = _rate_wait(res)
         log.warning("LLM 분당 한도(429) — %.1f초 뒤 다시 시도", wait)
         sleep(wait)
+    if keep_daily and is_daily_limit(res):
+        return res
     if res.status_code != 200:
         # 본문에는 Groq 조직 ID 등이 들어 있어 로그에 남기지 않는다 — 상태 코드와 오류 코드만
         try:
             code = res.json().get("error", {}).get("code", "")
         except ValueError:
             code = ""
-        log.warning("LLM API 오류 %s %s", res.status_code, code)
+        daily = " (하루 한도)" if is_daily_limit(res) else ""
+        log.warning("LLM API 오류 %s %s%s", res.status_code, code, daily)
         return None
     return res
 
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "openai/gpt-oss-120b"
+GROQ_FALLBACK = (
+    "openai/gpt-oss-20b"  # 큰 모델의 하루 한도(TPD 20만)를 다 쓰면. 한도는 모델마다 따로
+)
 
 
 class OpenAICompatLLM:
@@ -112,6 +129,7 @@ class OpenAICompatLLM:
         base_url: str,
         api_key: str,
         model: str,
+        fallback_models: list[str] | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ):
@@ -119,6 +137,7 @@ class OpenAICompatLLM:
         self.sleep = sleep
         self.headers = {"Authorization": f"Bearer {api_key}"}
         self.model = model
+        self.fallback_models = list(fallback_models or [])
         self.client = client or httpx.Client(timeout=90)
 
     def parse[T: pydantic.BaseModel](self, *, system: str, user: str, output: type[T]) -> T | None:
@@ -133,7 +152,18 @@ class OpenAICompatLLM:
                 "json_schema": {"name": output.__name__, "schema": output.model_json_schema()},
             },
         }
-        res = post_with_rate_retry(self.client, self.url, self.headers, body, self.sleep)
+        while True:
+            body["model"] = self.model
+            res = post_with_rate_retry(
+                self.client, self.url, self.headers, body, self.sleep, keep_daily=True
+            )
+            if res is None or not is_daily_limit(res):
+                break
+            if not self.fallback_models:
+                return None
+            # 하루 한도는 기다려도 안 풀린다 — 다음 모델로 바꾸고 이 인스턴스는 계속 그 모델을 쓴다
+            self.model = self.fallback_models.pop(0)
+            log.warning("LLM 하루 한도 — %s 로 바꿔요", self.model)
         if res is None:
             return None
         try:
@@ -180,5 +210,8 @@ def get_llm() -> LLM | None:
             base_url=GROQ_BASE_URL,
             api_key=groq_key,
             model=os.environ.get("GROQ_MODEL", GROQ_MODEL),
+            fallback_models=[
+                m for m in [os.environ.get("GROQ_FALLBACK_MODEL", GROQ_FALLBACK)] if m
+            ],
         )
     return ClaudeLLM() if os.environ.get("ANTHROPIC_API_KEY") else None
