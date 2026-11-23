@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import type { Scenario, SceneDoc } from "@demoday/contracts";
 import Editor from "./editor";
@@ -15,6 +15,39 @@ const stages: Record<string, string> = {
   scening: "장면 구성 중",
   rendering: "영상 렌더링 중",
 };
+const recoveryKey = "demoday.activeRun";
+type Operation = "build" | "scene";
+function rememberRun(id: string, operation: Operation = "build") {
+  try {
+    if (id)
+      sessionStorage.setItem(recoveryKey, JSON.stringify({ id, operation }));
+    else sessionStorage.removeItem(recoveryKey);
+  } catch {
+    /* The current run still works when browser storage is unavailable. */
+  }
+}
+function recalledRun(): { id: string; operation: Operation } | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(recoveryKey) || "null");
+    if (
+      typeof saved?.id === "string" &&
+      saved.id &&
+      ["build", "scene"].includes(saved.operation)
+    )
+      return saved;
+  } catch {
+    /* Ignore unavailable storage or an invalid saved entry. */
+  }
+  return null;
+}
+class RunRequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 async function request(
   path: string,
   method = "GET",
@@ -30,7 +63,8 @@ async function request(
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new Error(
+    throw new RunRequestError(
+      response.status,
       Array.isArray(data.detail)
         ? data.detail
             .map((item: string | { msg: string }) =>
@@ -80,9 +114,23 @@ function moved<T>(list: T[], index: number, delta: number) {
   [next[index], next[index + delta]] = [next[index + delta], next[index]];
   return next;
 }
+const subscribe = () => () => {};
 export default function Home() {
-  const [page, setPage] = useState(0),
-    [id, setId] = useState("");
+  const hydrated = useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
+  return hydrated ? (
+    <Studio />
+  ) : (
+    <main aria-busy="true">프로젝트 확인 중…</main>
+  );
+}
+function Studio() {
+  const [initialRun] = useState(recalledRun);
+  const [page, setPage] = useState(initialRun ? 2 : 0),
+    [id, setId] = useState(initialRun?.id || "");
   const [scenario, setScenario] = useState<Scenario | null>(null),
     [scene, setScene] = useState<SceneDoc | null>(null);
   const [stage, setStage] = useState(""),
@@ -94,7 +142,9 @@ export default function Home() {
     [url, setUrl] = useState(""),
     [prompt, setPrompt] = useState("");
   const [totalSec, setTotalSec] = useState(60);
-  const [operation, setOperation] = useState<"build" | "scene">("build");
+  const [operation, setOperation] = useState<Operation>(
+    initialRun?.operation || "build",
+  );
   const [duration, setDuration] = useState(0);
   const [poll, setPoll] = useState(0);
   const sample = page === 3 && !id;
@@ -118,6 +168,15 @@ export default function Home() {
       try {
         const data = await request(path, "GET", undefined, controller.signal);
         if (controller.signal.aborted) return;
+        setRepo(data.repo || "");
+        setUrl(data.url || "");
+        setTotalSec(data.totalSec || 60);
+        if (data.scenario) setScenario(data.scenario);
+        if (data.scene) setScene(data.scene);
+        if (data.stage === "analyzed" && data.scenario) {
+          setPage(1);
+          return;
+        }
         setWarning(data.warning || "");
         setStage(data.stage);
         if (data.stage === "error") {
@@ -130,7 +189,6 @@ export default function Home() {
             setError("제작은 끝났지만 결과 파일을 불러올 수 없습니다.");
             return;
           }
-          setScene(data.scene);
           setVideo(
             data.videoUrl +
               "?v=" +
@@ -139,8 +197,16 @@ export default function Home() {
           return;
         }
         timer = setTimeout(refresh, 1500);
-      } catch {
-        if (!controller.signal.aborted) {
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (error instanceof RunRequestError && error.status === 404) {
+          rememberRun("");
+          setId("");
+          setPage(0);
+          setError(
+            "이전 작업을 찾을 수 없습니다. 새 프로젝트를 시작해 주세요.",
+          );
+        } else {
           setStage("offline");
           setError("진행 상태를 가져올 수 없습니다.");
         }
@@ -182,6 +248,7 @@ export default function Home() {
           : undefined,
       });
       setTotalSec(Number(value("seconds")));
+      rememberRun(data.id);
       setId(data.id);
       setScenario(data.scenario);
       setPage(1);
@@ -196,6 +263,7 @@ export default function Home() {
     } else {
       await request(path + "/scene", "PUT", edited);
     }
+    rememberRun(id, kind);
     if (edited) setScene(edited);
     setOperation(kind);
     setWarning("");
@@ -396,6 +464,14 @@ export default function Home() {
         )}
         {page === 2 && (
           <section aria-live="polite">
+            <button
+              onClick={() => {
+                rememberRun("");
+                window.location.reload();
+              }}
+            >
+              새 프로젝트 시작
+            </button>
             {warning && <p className="alert">{warning}</p>}
             {stage === "done" && video ? (
               <>
