@@ -309,7 +309,7 @@ function Studio() {
             <fieldset disabled={busy}>
               <div className="presets">
                 <small>예시로 채우기</small>
-                {presets.map((p, i) => (
+                {presets.map((p) => (
                   <button
                     key={p.repo}
                     type="button"
@@ -320,7 +320,7 @@ function Studio() {
                       setError("");
                     }}
                   >
-                    {i === 0 ? "채움 예시" : "Nuxt Movies 예시"}
+                    {p.repo.replace("https://github.com/", "")} 예시
                   </button>
                 ))}
               </div>
