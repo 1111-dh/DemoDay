@@ -342,3 +342,44 @@ def test_architecture_scene_is_off_by_default(client, monkeypatch):  # 임시 �
     client.post(f"/api/runs/{create(client)['id']}/build", json={})
     client.post(f"/api/runs/{create(client)['id']}/build", json={"includeArchitecture": True})
     assert seen == [False, True]
+
+
+def test_site_unreachable_is_treated_like_capture_failure(client, monkeypatch):
+    """배포 사이트가 죽어 있으면 goto 는 전부 실패인데, 오류 페이지에서 한 scroll 은 ok 로 남는다.
+    그 오류 페이지가 영상에 들어가지 않고, 경고가 남아야 한다(11/24 Vercel 404 실측)."""
+    import json
+
+    def dead_site(run_dir):
+        sc = json.loads((run_dir / "scenario.json").read_text())
+        shots = []
+        for s in sc["steps"]:
+            ok = s["action"] == "scroll"  # 오류 페이지에서 스크롤만 '성공'
+            shots.append(
+                {
+                    "stepId": s["id"],
+                    "image": "shots/1.png",
+                    "click": None,
+                    "status": "ok" if ok else "fallback",
+                }
+            )
+        (run_dir / "shots").mkdir(exist_ok=True)
+        (run_dir / "shots" / "1.png").write_bytes(b"png")
+        (run_dir / "capture.json").write_text(
+            json.dumps({"viewport": {"w": 1280, "h": 720}, "shots": shots})
+        )
+
+    monkeypatch.setattr(pipeline, "run_capture", dead_site)
+    monkeypatch.setattr(pipeline, "_site_alive", lambda url: False)
+    rid = create(client)["id"]
+    client.post(f"/api/runs/{rid}/build", json={})
+    run = client.get(f"/api/runs/{rid}").json()
+    assert run["stage"] == "done"
+    assert "접속" in run["warning"]
+    assert all(s["type"] != "screen" for s in run["scene"]["scenes"])
+
+    # 사이트가 살아 있으면(로딩 화면에서 멈춤·로그인 리다이렉트로 goto 만 실패) 화면을 버리지 않는다
+    monkeypatch.setattr(pipeline, "_site_alive", lambda url: True)
+    rid = create(client)["id"]
+    client.post(f"/api/runs/{rid}/build", json={})
+    run = client.get(f"/api/runs/{rid}").json()
+    assert "warning" not in run

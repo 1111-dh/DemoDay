@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
 from pathlib import Path
+
+import httpx
 
 from app import llm, paths, runs, vision
 from app.scene import build_scene
@@ -99,16 +102,56 @@ def _summary(e: Exception) -> str:
     return f"{head} {detail.removeprefix('✗').strip()}".strip()[:200]
 
 
+SITE_DOWN = "배포 주소에 접속하지 못했어요(모든 페이지 이동 실패)"
+
+
+def _site_alive(url: str) -> bool:
+    """배포 주소가 응답하는지. 연결 실패·404·410·5xx(Vercel DEPLOYMENT_NOT_FOUND 등)면 False.
+
+    401·403·429(로그인 필요·봇 차단)는 서버가 살아 있다는 뜻이라 True — 화면을 버리지 않는다.
+    """
+    try:
+        res = httpx.get(url, timeout=10, follow_redirects=True)
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError):
+        return False
+    return not (res.status_code in (404, 410) or res.status_code >= 500)
+
+
+def _site_unreachable(d: Path) -> bool:
+    """사이트가 죽어 있다 — 페이지 이동(goto)이 하나도 성공하지 못했고, 배포 주소도 응답하지 않는다.
+
+    이때 오류 페이지(Vercel 404 등)에서 한 scroll·click 이 'ok' 로 남아 오류 화면이 영상에
+    들어간다(11/24 실측). goto 는 로딩 화면에서 멈춤·로그인 리다이렉트로도 실패하니
+    (사이트는 산 경우) 주소에 직접 물어서 정말 죽었을 때만 True — 에이전트 모드처럼
+    goto 가 하나뿐일 때 오판하지 않게.
+    """
+    try:
+        scenario = json.loads((d / "scenario.json").read_text())
+        shots = json.loads((d / "capture.json").read_text())["shots"]
+    except (OSError, ValueError, KeyError):
+        return False
+    gotos = {s["id"] for s in scenario.get("steps", []) if s.get("action") == "goto"}
+    tried = [s for s in shots if s.get("stepId") in gotos]
+    all_failed = bool(tried) and all(
+        s.get("status", "ok") != "ok" for s in tried
+    )  # 없으면 ok(계약)
+    return all_failed and not _site_alive(scenario.get("baseUrl", ""))
+
+
 def _capture_or_empty(rid: str, d: Path) -> None:
-    """캡처가 통째로 실패해도(사이트 응답 없음 등) 영상은 나오게 — 카드·아키텍처로만."""
+    """캡처가 통째로 실패해도(사이트 응답 없음 등) 영상은 나오게 — 카드만으로."""
+    hint = "실제 화면 없이 만들었어요. 사이트가 열리는지 확인하세요."
     try:
         run_capture(d)
     except Exception as e:
         log.warning("캡처 실패 %s — 화면 없이 계속: %s", rid, e)
         runs.write_json(d / "capture.json", EMPTY_CAPTURE)
-        msg = _summary(e)
-        hint = "실제 화면 없이 만들었어요. 사이트가 열리는지 확인하세요."
-        runs.write_status(rid, warning=f"{msg} — {hint}")
+        runs.write_status(rid, warning=f"{_summary(e)} — {hint}")
+        return
+    if _site_unreachable(d):
+        log.warning("사이트 접속 실패 %s — 화면 없이 계속", rid)
+        runs.write_json(d / "capture.json", EMPTY_CAPTURE)
+        runs.write_status(rid, warning=f"{SITE_DOWN} — {hint}")
 
 
 def build(rid: str, total_sec: float, include_architecture: bool) -> None:
