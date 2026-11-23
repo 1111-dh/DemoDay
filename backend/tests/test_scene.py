@@ -10,7 +10,8 @@ from app.scene import SceneCopy, assemble, build_scene
 from tests.fakes import FakeLLM
 
 FIXTURES = paths.ROOT / "contracts" / "fixtures"
-FACTS = RepoFacts("DemoDay", "레포로 만드는 데모 영상", ["next", "react"], "web", "next-app", [])
+STACK = ["next", "react", "@supabase/supabase-js"]
+FACTS = RepoFacts("DemoDay", "레포로 만드는 데모 영상", STACK, "web", "next-app", [])
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ def test_assemble_without_copy_matches_contract(scenario, capture):
     assert clicked["zoom"] == {"x": 640, "y": 120, "scale": 1.6}
     assert clicked["cursor"] == {"x": 640, "y": 120}
     assert clicked["durationSec"] == 4
-    assert doc["scenes"][3]["nodes"] == ["Next.js"]
+    assert doc["scenes"][3]["nodes"] == ["Next.js", "Supabase"]
 
 
 def test_screen_without_click_has_no_zoom(scenario, capture):
@@ -59,6 +60,16 @@ def test_fallback_shot_is_short_and_unzoomed(scenario, capture):
 def test_architecture_toggle(scenario, capture):
     doc = assemble(scenario, capture["shots"], FACTS, 60, False, None)
     assert [s["type"] for s in doc["scenes"]] == ["title", "screen", "screen"]
+
+
+def test_single_node_architecture_is_dropped(
+    scenario, capture
+):  # nuxt/movies: 'Nuxt' 한 단어만 4초
+    from app.analyze.facts import RepoFacts
+
+    lone = RepoFacts("n", "s", ["nuxt"], "", "nuxt", [])
+    doc = assemble(scenario, capture["shots"], lone, 60, True, None)
+    assert "architecture" not in [s["type"] for s in doc["scenes"]]
 
 
 def test_copy_applied_and_weights_clamped(scenario, capture):

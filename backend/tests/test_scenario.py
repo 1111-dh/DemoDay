@@ -481,3 +481,48 @@ def test_scroll_steps_are_grounded():  # 긴 랜딩 페이지(채움)의 아래 
     assert steps[1] == {"id": 2, "action": "scroll", "caption": "서비스 소개 훑어보기"}
     sc = {"baseUrl": BASE, "steps": steps}
     assert schema_errors("scenario", sc) == []
+
+
+def test_excluded_paths_from_prompt():  # 채움: LLM이 '빼주세요'를 무시하고 /report로 갔다
+    from app.scenario import excluded_paths
+
+    prompt = "메인 위주로 보여주세요. 상단 '리포트' 메뉴(/reports, /report)와 입력 이후는 빼주세요."
+    assert excluded_paths(prompt) == {"/reports", "/report"}
+    assert excluded_paths("검색(/search)을 먼저 보여주세요") == set()  # 빼라는 말이 없다
+    assert excluded_paths("/admin 은 제외해 주세요\n/about 먼저") == {"/admin"}
+    assert excluded_paths(None) == set()
+
+
+def test_prompt_excluded_page_is_never_visited():
+    prompt = "/search 페이지는 빼주세요"
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/", caption="메인"),
+            step("goto", path="/search", caption="검색"),
+            step("type", path="/search", selector="input[name=q]", value="React", caption="입력"),
+            step("goto", path="/about", caption="소개"),
+        ]
+    )
+    llm = FakeLLM(draft, draft, draft)
+    sc = build_scenario(facts(), BASE, llm, prompt)
+    assert "/search" not in json.dumps(sc)
+    assert "/search" not in llm.users[0].split("<<<")[0]  # LLM에 주는 페이지 목록에서도 뺀다
+    assert all(s.get("path") != "/search" for s in default_scenario(facts(), BASE, prompt)["steps"])
+
+
+def test_steps_after_a_dropped_goto_are_dropped():  # 빠진 화면용 스크롤이 앞 화면에 붙지 않게
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/", caption="메인"),
+            step("goto", path="/nope", caption="없는 화면"),
+            step("scroll", caption="없는 화면 아래"),
+            step("goto", path="/about", caption="소개"),
+            step("scroll", caption="소개 아래"),
+        ]
+    )
+    out = ground(draft, facts())
+    assert [(s["action"], s.get("path"), s["caption"]) for s in out] == [
+        ("goto", "/", "메인"),
+        ("goto", "/about", "소개"),
+        ("scroll", None, "소개 아래"),
+    ]

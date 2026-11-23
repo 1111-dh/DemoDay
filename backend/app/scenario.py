@@ -5,6 +5,7 @@ LLM 초안은 코드에서 확인된 경로·셀렉터만 남기고(ground), 실
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -25,7 +26,7 @@ MAX_STEPS = 7
 MAX_SCROLLS = 2  # 같은 화면에서 이어지는 스크롤 (긴 랜딩 페이지)
 MAX_PROMPT = 500
 README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
-SCENARIO_VERSION = 10  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 11  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -84,6 +85,33 @@ def normalize_prompt(prompt: str | None) -> str | None:
     return text or None
 
 
+# "…(/reports, /report)는 빼주세요" — 사용자가 뺀 경로. LLM이 무시해도 코드가 지킨다
+_EXCLUDE_WORD = re.compile(r"빼|제외|말고|없이|넣지|보여주지|skip|exclude|without|except", re.I)
+_PATH_TOKEN = re.compile(r"(?<![\w.])/[\w\-\[\]:/]*\w\]?")
+
+
+def excluded_paths(prompt: str | None) -> set[str]:
+    """빼라는 말이 있는 문장에 적힌 경로들. 그 아래 경로(/report/1)도 함께 빠진다."""
+    found: set[str] = set()
+    for sentence in re.split(r"[.!?\n]", prompt or ""):
+        if _EXCLUDE_WORD.search(sentence):
+            found.update(m.group(0).rstrip("/") for m in _PATH_TOKEN.finditer(sentence))
+    return found
+
+
+def _is_excluded(path: str, excluded: set[str]) -> bool:
+    return any(path == x or path.startswith(x + "/") for x in excluded)
+
+
+def without_excluded(facts: RepoFacts, prompt: str | None) -> RepoFacts:
+    """사용자가 뺀 경로를 페이지 목록에서 지운다 — LLM은 그 화면을 모르고, grounding도 막는다."""
+    excluded = excluded_paths(prompt)
+    if not excluded:
+        return facts
+    pages = [p for p in facts.pages if not _is_excluded(p.path, excluded)]
+    return dataclasses.replace(facts, pages=pages)
+
+
 def with_reference(user: str, prompt: str | None, use: str) -> str:
     """사용자 프롬프트를 시스템 지시가 아닌 '참고 요청' 블록으로 user 메시지 끝에 붙인다."""
     return user + REFERENCE.format(use=use, prompt=prompt) if prompt else user
@@ -139,17 +167,24 @@ def _ground(draft: ScenarioDraft, facts: RepoFacts) -> tuple[list[dict], list[st
     steps: list[dict] = []
     dropped: list[str] = []
     current: str | None = None
+    lost = False  # 바로 앞 goto 가 빠졌다 — 그 화면용 스크롤을 앞 화면에 붙이지 않는다
     for s in draft.steps:
         caption = s.caption.strip()
         if s.action == "goto":
             if s.path not in pages:
-                dropped.append(f"goto {s.path!r}: pages에 없는(또는 동적) 경로")
+                dropped.append(f"goto {s.path!r}: pages에 없는(또는 동적·사용자가 뺀) 경로")
+                lost = True
                 continue
+            lost = False
             current = s.path
             steps.append(
                 {"action": "goto", "path": s.path, "caption": caption or _caption_for(s.path)}
             )
             continue
+        if lost and s.action == "scroll":  # click·type 은 아래에서 현재 화면 요소인지 따로 본다
+            dropped.append("scroll: 빠진 goto 화면의 스크롤")
+            continue
+        lost = False
         if s.path in click_only and s.path != current:  # 동적 화면 — 앞 단계 click 으로만 들어간다
             if not steps or steps[-1]["action"] != "click":
                 dropped.append(f"{s.action} {s.selector!r}: 동적 화면 {s.path}는 앞 click 뒤에만")
@@ -193,7 +228,8 @@ def _base(base_url: str) -> str:
     return base_url.strip().rstrip("/")
 
 
-def default_scenario(facts: RepoFacts, base_url: str) -> dict:
+def default_scenario(facts: RepoFacts, base_url: str, prompt: str | None = None) -> dict:
+    facts = without_excluded(facts, prompt)
     pages = list(_static_pages(facts))[:DEFAULT_PAGES] or ["/"]
     steps = [
         {"id": i, "action": "goto", "path": p, "caption": _caption_for(p)}
@@ -234,6 +270,7 @@ def _user_message(facts: RepoFacts, prompt: str | None = None) -> str:
 def scenario_from_llm(
     facts: RepoFacts, base_url: str, llm: LLM, prompt: str | None = None
 ) -> dict | None:
+    facts = without_excluded(facts, prompt)
     need = _min_steps(facts)
 
     def check(draft: ScenarioDraft) -> list[str]:
@@ -259,7 +296,7 @@ def build_scenario(
     facts: RepoFacts, base_url: str, llm: LLM | None, prompt: str | None = None
 ) -> dict:
     result = scenario_from_llm(facts, base_url, llm, prompt) if llm else None
-    return result or default_scenario(facts, base_url)
+    return result or default_scenario(facts, base_url, prompt)
 
 
 def scenario_cache_path(
@@ -304,7 +341,7 @@ def analyze(
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(scenario, ensure_ascii=False))
         else:
-            scenario = default_scenario(facts, base_url)
+            scenario = default_scenario(facts, base_url, prompt)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "facts.json").write_text(facts.to_json())
