@@ -109,11 +109,11 @@ def _shots(*statuses):
     ]
 
 
-def test_keep_shots_drops_consecutive_fallbacks():
+def test_keep_shots_drops_failed_steps():  # 실패한 동작을 성공처럼 자막으로 말하지 않게
     from app.scene import keep_shots
 
     kept = keep_shots(_shots("ok", "fallback", "fallback", "ok", "fallback"))
-    assert [s["stepId"] for s in kept] == [1, 2, 4, 5]
+    assert [s["stepId"] for s in kept] == [1, 4]
 
 
 def test_all_fallback_keeps_first(scenario):
