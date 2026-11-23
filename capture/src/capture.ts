@@ -19,6 +19,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseArgs } from "node:util";
+import { agentSteps } from "./agent";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 import type { Capture, Scenario } from "@demoday/contracts";
 
@@ -256,8 +258,15 @@ async function recordingPage(browser: Browser, auth: Auth | null, videoDir: stri
   });
 }
 
-async function main(scenarioPath: string, runDir: string) {
-  const scenario: Scenario = JSON.parse(await readFile(scenarioPath, "utf8"));
+type AgentArgs = { goal: string; script?: string; cmd: string } | null;
+
+async function main(scenarioPath: string, runDir: string, agent: AgentArgs) {
+  // 에이전트 모드는 끝나면 scenario.json 을 실제로 한 동작으로 덮어쓴다 — 원래 시나리오는 처음 한 번 plan 으로 남겨
+  // 다시 돌릴 때(에이전트 실패 시 대신 쓸 단계) 읽는다
+  const plan = join(runDir, "scenario.plan.json");
+  const hasPlan = agent !== null && (await readFile(plan, "utf8").then(() => true, () => false));
+  const scenario: Scenario = JSON.parse(await readFile(hasPlan ? plan : scenarioPath, "utf8"));
+  if (agent && !hasPlan) await writeFile(plan, JSON.stringify(scenario, null, 2));
   await mkdir(join(runDir, "shots"), { recursive: true });
   const videoDir = await mkdtemp(join(tmpdir(), "demoday-video-"));
 
@@ -276,7 +285,16 @@ async function main(scenarioPath: string, runDir: string) {
     const c: Ctx = { page, baseUrl: scenario.baseUrl, shotPath: null, mouse: { x: VIEWPORT.w * 0.62, y: VIEWPORT.h * 0.78 } };
 
     let prevEnd = 0; // 앞 clip 끝(ms)
-    for (const step of scenario.steps) {
+    // 에이전트 모드면 화면을 보고 고른 동작이 단계가 된다(#53). 실행·녹화는 아래 그대로
+    const executed: Step[] = [];
+    const source: AsyncIterable<Step> | Step[] = agent
+      ? agentSteps({ page, runDir, scenario, ...agent, snap, lastOk: () => shots.at(-1)?.status === "ok" }, executed)
+      : scenario.steps;
+    if (agent) {
+      await rm(join(runDir, "agent"), { recursive: true, force: true }); // 이전 실행의 관찰이 섞이지 않게
+      await mkdir(join(runDir, "agent"), { recursive: true });
+    }
+    for await (const step of source) {
       const image = `shots/${step.id}.png`;
       c.shotPath = join(runDir, image);
       const stepStart = Date.now();
@@ -319,6 +337,11 @@ async function main(scenarioPath: string, runDir: string) {
       shots.push(shot);
       console.log(`${shot.status === "ok" ? "✓" : "!"} ${image}`);
     }
+    if (agent) {
+      // 실제로 한 동작을 시나리오로 남긴다 — scene 은 이 단계의 caption·stepId 로 자막을 만든다. auth 등 나머지는 그대로
+      await writeFile(join(runDir, "scenario.json"), JSON.stringify({ ...scenario, steps: executed }, null, 2));
+      console.log(`✓ 에이전트 ${executed.length}단계 → ${join(runDir, "scenario.json")}`);
+    }
 
     await sleep(CLIP_PAD_MS); // 기준점 오차만큼 더 녹화해 마지막 clip 끝이 영상 안에 들어가게
     const rec = page.video();
@@ -341,12 +364,25 @@ async function main(scenarioPath: string, runDir: string) {
   console.log(`✓ ${join(runDir, "capture.json")} (${fallbacks} fallback, ${video ? VIDEO_FILE : "녹화 없음"})`);
 }
 
-const [scenarioPath, runDir] = process.argv.slice(2);
+const { values: opt, positionals } = parseArgs({
+  allowPositionals: true,
+  options: { agent: { type: "boolean" }, goal: { type: "string" }, "agent-script": { type: "string" } },
+});
+const [scenarioPath, runDir] = positionals;
 if (!scenarioPath || !runDir) {
-  console.error("사용법: capture <scenario.json> <runDir>");
+  console.error("사용법: capture <scenario.json> <runDir> [--agent [--goal <목표>] [--agent-script <actions.json>]]");
   process.exit(1);
 }
-main(scenarioPath, runDir).catch((e) => {
+// 에이전트 모드: --agent 또는 CAPTURE_MODE=agent. 에이전트 명령은 DEMODAY_AGENT_CMD(기본: A의 app.agent)
+const agentOn = opt.agent || Boolean(opt["agent-script"]) || process.env.CAPTURE_MODE === "agent";
+const agentArgs: AgentArgs = agentOn
+  ? {
+      goal: opt.goal || "이 서비스의 핵심 기능을 처음 쓰는 사람처럼 직접 써 보며 보여준다",
+      script: opt["agent-script"],
+      cmd: process.env.DEMODAY_AGENT_CMD || "uv run --project backend python -m app.agent",
+    }
+  : null;
+main(scenarioPath, runDir, agentArgs).catch((e) => {
   console.error(`✗ ${e instanceof Error ? e.message : e}`);
   process.exit(2);
 });
