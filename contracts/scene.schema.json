@@ -16,7 +16,8 @@
         "oneOf": [
           { "$ref": "#/$defs/TitleScene" },
           { "$ref": "#/$defs/ScreenScene" },
-          { "$ref": "#/$defs/ArchitectureScene" }
+          { "$ref": "#/$defs/ArchitectureScene" },
+          { "$ref": "#/$defs/PointsScene" }
         ]
       }
     }
@@ -28,6 +29,33 @@
       "additionalProperties": false,
       "required": ["x", "y"],
       "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+    },
+    "Icon": {
+      "type": "string",
+      "enum": ["clock", "alert", "search", "document", "chart", "user", "team", "check", "bolt", "money", "chat", "calendar", "map", "store", "ai"]
+    },
+    "PointItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["icon", "text"],
+      "properties": {
+        "icon": { "$ref": "#/$defs/Icon" },
+        "text": { "type": "string", "description": "24자 이내 한 줄" }
+      }
+    },
+    "PointsScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationSec", "heading", "items"],
+      "description": "소개 그래픽 — 문제(불편 2~3개)·해결(핵심 기능 3개)을 아이콘 카드로",
+      "properties": {
+        "type": { "const": "points" },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+        "transition": { "$ref": "#/$defs/Transition" },
+        "kicker": { "type": "string", "description": "\"문제\" | \"해결\" 등 — 톤을 나눈다" },
+        "heading": { "type": "string", "description": "한 줄 제목 (28자 이내)" },
+        "items": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "$ref": "#/$defs/PointItem" } }
+      }
     },
     "VideoClip": {
       "type": "object",

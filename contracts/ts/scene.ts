@@ -1,6 +1,22 @@
 // 자동 생성 파일 — 수정 금지. make gen 으로 재생성.
 
 export type Transition = "none" | "fade" | "slide";
+export type Icon =
+  | "clock"
+  | "alert"
+  | "search"
+  | "document"
+  | "chart"
+  | "user"
+  | "team"
+  | "check"
+  | "bolt"
+  | "money"
+  | "chat"
+  | "calendar"
+  | "map"
+  | "store"
+  | "ai";
 
 /**
  * A(장면 생성) → B(렌더링), C(미리보기·수정). LLM은 영상이 아니라 이 JSON만 만든다.
@@ -14,7 +30,10 @@ export interface SceneDoc {
   /**
    * @minItems 1
    */
-  scenes: [TitleScene | ScreenScene | ArchitectureScene, ...(TitleScene | ScreenScene | ArchitectureScene)[]];
+  scenes: [
+    TitleScene | ScreenScene | ArchitectureScene | PointsScene,
+    ...(TitleScene | ScreenScene | ArchitectureScene | PointsScene)[]
+  ];
 }
 export interface TitleScene {
   type: "title";
@@ -76,4 +95,32 @@ export interface ArchitectureScene {
    * [from, to] — nodes 배열 인덱스
    */
   edges: [number, number][];
+}
+/**
+ * 소개 그래픽 — 문제(불편 2~3개)·해결(핵심 기능 3개)을 아이콘 카드로
+ */
+export interface PointsScene {
+  type: "points";
+  durationSec: number;
+  transition?: Transition;
+  /**
+   * "문제" | "해결" 등 — 톤을 나눈다
+   */
+  kicker?: string;
+  /**
+   * 한 줄 제목 (28자 이내)
+   */
+  heading: string;
+  /**
+   * @minItems 2
+   * @maxItems 4
+   */
+  items: [PointItem, PointItem] | [PointItem, PointItem, PointItem] | [PointItem, PointItem, PointItem, PointItem];
+}
+export interface PointItem {
+  icon: Icon;
+  /**
+   * 24자 이내 한 줄
+   */
+  text: string;
 }

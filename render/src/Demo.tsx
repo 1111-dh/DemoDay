@@ -19,6 +19,13 @@ function renderScene(scene: Scene, frames: number, domain?: string) {
       return <ScreenScene scene={scene} domain={domain} durationInFrames={frames} />;
     case "architecture":
       return <ArchitectureScene scene={scene} />;
+    case "points":
+      // TODO(B, #34): 아이콘 카드 그래픽(PointsScene). 그 전까지는 제목 카드로 대신 그린다
+      return (
+        <TitleScene
+          scene={{ type: "title", durationSec: scene.durationSec, text: scene.heading, kicker: scene.kicker }}
+        />
+      );
     default: {
       const never: never = scene;
       throw new Error(`알 수 없는 장면 type: ${JSON.stringify(never)}`);

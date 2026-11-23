@@ -28,6 +28,46 @@ class Point(BaseModel):
     y: float
 
 
+class Icon(StrEnum):
+    clock = 'clock'
+    alert = 'alert'
+    search = 'search'
+    document = 'document'
+    chart = 'chart'
+    user = 'user'
+    team = 'team'
+    check = 'check'
+    bolt = 'bolt'
+    money = 'money'
+    chat = 'chat'
+    calendar = 'calendar'
+    map = 'map'
+    store = 'store'
+    ai = 'ai'
+
+
+class PointItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    icon: Icon
+    text: Annotated[str, Field(description='24자 이내 한 줄')]
+
+
+class PointsScene(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    type: Literal['points']
+    durationSec: Annotated[float, Field(gt=0.0)]
+    transition: Transition | None = 'fade'
+    kicker: Annotated[
+        str | None, Field(description='"문제" | "해결" 등 — 톤을 나눈다')
+    ] = None
+    heading: Annotated[str, Field(description='한 줄 제목 (28자 이내)')]
+    items: Annotated[list[PointItem], Field(max_length=4, min_length=2)]
+
+
 class VideoClip(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -114,5 +154,6 @@ class SceneDoc(BaseModel):
         ),
     ]
     scenes: Annotated[
-        list[TitleScene | ScreenScene | ArchitectureScene], Field(min_length=1)
+        list[TitleScene | ScreenScene | ArchitectureScene | PointsScene],
+        Field(min_length=1),
     ]
