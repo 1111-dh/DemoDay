@@ -35,6 +35,9 @@ const HOLD_MS = 1500;
 /** 스크린샷이 끝내 실패한 단계에 쓰는 1x1 회색 PNG(렌더가 1280x720로 늘린다). 파일이 없으면 렌더가 깨진다 */
 const BLANK_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4/OkdAAWvAtR7z8HDAAAAAElFTkSuQmCC", "base64");
 const TYPE_DELAY_MS = 60;
+/** 스크롤 한 번(화면 0.8배)을 이 시간 동안 이만큼 나눠 굴린다 */
+const SCROLL_MS = 1200;
+const SCROLL_STEPS = 24;
 
 type Step = Scenario["steps"][number];
 type Shot = Capture["shots"][number];
@@ -177,10 +180,13 @@ async function run(c: Ctx, step: Step): Promise<Result> {
       await page.mouse.move(c.mouse.x, c.mouse.y);
       if (!live) await page.mouse.wheel(0, VIEWPORT.h * 0.8);
       else {
-        // 한 번에 점프하지 않고 나눠서 부드럽게
-        for (let i = 0; i < 8; i++) {
-          await page.mouse.wheel(0, (VIEWPORT.h * 0.8) / 8);
-          await sleep(50);
+        // 천천히 출발해 천천히 멈추게(ease-in-out) 잘게 나눠 굴린다. 0.4초에 8번 굴리던 것은 렌더가 빨리 재생하면 툭툭 끊겼다
+        const total = VIEWPORT.h * 0.8;
+        const steps = SCROLL_STEPS;
+        const at = (i: number) => total * (1 - Math.cos((Math.PI * i) / steps)) / 2;
+        for (let i = 1; i <= steps; i++) {
+          await page.mouse.wheel(0, at(i) - at(i - 1));
+          await sleep(SCROLL_MS / steps);
         }
       }
       return { click: null };

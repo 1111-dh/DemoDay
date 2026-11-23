@@ -435,3 +435,22 @@ def test_build_scene_saves_what_screens_show(tmp_path):  # 자막 점검용 — 
     llm = FakeLLM(SceneCopy(title="T", subtitle="", captions=["a", "b"], weights=[1, 1]))
     build_scene(run, 60, False, llm, describer=FakeDescriber({one: "검색창"}))
     assert json.loads((run / "seen.json").read_text()) == ["검색창", None]
+
+
+def test_split_focus_reads_region_prefix():  # 이미지 모델이 고른 핵심 영역 → 줌 지점
+    from app.scene import split_focus
+
+    texts, points = split_focus(
+        ["[오른쪽위] 매출 그래프", "[가운데] 로딩 중인 빈 화면", "제목만", None, "[모름] x"]
+    )
+    assert texts == ["매출 그래프", "로딩 중인 빈 화면", "제목만", None, "x"]
+    assert points == [{"x": 1067, "y": 120}, {"x": 640, "y": 360}, None, None, None]
+
+
+def test_focus_zooms_screen_without_click(scenario):
+    from app.scene import FOCUS_ZOOM
+
+    shots = [{**s, "click": None, "focus": {"x": 213, "y": 600}} for s in _shots("ok")]
+    screen = assemble(scenario, shots, FACTS, 60, False, None)["scenes"][1]
+    assert screen["zoom"] == {"x": 213, "y": 600, "scale": FOCUS_ZOOM} and "cursor" not in screen
+    assert schema_errors("scene", assemble(scenario, shots, FACTS, 60, False, None)) == []

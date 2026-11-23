@@ -68,6 +68,33 @@ export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames }
   );
 };
 
+const ease = { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic) } as const;
+
+/**
+ * 카메라: 확대할수록 zoom 지점을 화면 가운데로 끌어오되, 확대한 영역이 화면 밖으로 나가지 않게 중심을 clamp 한다
+ * (기준점 확대는 가장자리 지점에서 화면이 한쪽으로 쏠리고 잘렸다).
+ * - 클릭(cursor 있음): 클릭(0.8초) 직후 0.8초 동안 확대. 녹화가 있고 장면이 충분히 길면 끝 1초 동안 전체로 돌아와 결과를 보여준다
+ * - 핵심 영역(cursor 없음): 0.3초부터 장면 끝까지 천천히 다가간다 — 설명하는 곳에 시선이 머물게
+ */
+function zoom(scene: T, frame: number, total: number, s: (sec: number) => number, video: boolean): string | undefined {
+  const z = scene.zoom;
+  if (!z) return undefined;
+  let p: number;
+  if (scene.cursor) {
+    const inEnd = s(1.6);
+    p = interpolate(frame, [s(0.8), inEnd], [0, 1], ease);
+    const outStart = total - s(1);
+    if (video && outStart > inEnd + s(0.6)) p *= 1 - interpolate(frame, [outStart, total - s(0.2)], [0, 1], ease);
+  } else {
+    p = interpolate(frame, [s(0.3), Math.max(s(0.3) + 1, total - s(0.3))], [0, 1], ease);
+  }
+  const k = 1 + (z.scale - 1) * p;
+  const fit = (c: number, size: number) => Math.min(size - size / (2 * k), Math.max(size / (2 * k), c));
+  const cx = fit(interpolate(p, [0, 1], [W / 2, z.x]), W);
+  const cy = fit(interpolate(p, [0, 1], [H / 2, z.y]), H);
+  return `translate(${W / 2 - cx * k}px, ${H / 2 - cy * k}px) scale(${k})`;
+}
+
 /**
  * 캡처 좌표계(1280x720) 안: 화면(녹화 구간 또는 정지 화면) + 커서 + 클릭 하이라이트 + 줌.
  * 녹화를 빠르게/느리게 재생하면 클릭 시각도 같이 움직이므로 커서 박자를 재생 속도로 나눈다.
@@ -86,15 +113,10 @@ const Screen: React.FC<{ scene: T; media: Media | null; total: number }> = ({ sc
   });
   const press = spring({ frame, fps, delay: s(0.8), config: { damping: 200 }, durationInFrames: s(0.6) });
 
-  const zoom = scene.zoom;
-  const z = zoom ? spring({ frame, fps, delay: cursor ? s(1) : s(0.3), config: { damping: 200 }, durationInFrames: s(1) }) : 0;
-  // 녹화가 있으면 끝 1.2초(결과 화면)는 다시 전체로 — 확대한 채면 결과가 화면 가장자리에서 잘린다(#34, nuxt 검색 결과)
-  const out = zoom && m ? spring({ frame, fps, delay: total - s(1.2), config: { damping: 200 }, durationInFrames: s(0.7) }) : 0;
-  const scale = zoom ? 1 + (zoom.scale - 1) * z * (1 - out) : 1;
+  const camera = zoom(scene, frame, total, s, Boolean(m));
 
   return (
-    // 줌 기준점을 원점으로 잡으면 scale ≥ 1에서도 화면이 비지 않는다
-    <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: zoom ? `${zoom.x}px ${zoom.y}px` : "center" }}>
+    <AbsoluteFill style={{ transform: camera, transformOrigin: "0 0" }}>
       {m ? (
         // 구간이 장면보다 짧으면(속도 하한) 마지막 프레임에서 멈춘다
         <Freeze frame={m.playFrames - 1} active={frame >= m.playFrames}>
