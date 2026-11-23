@@ -10,5 +10,5 @@
 - 로그인: scenario에 `auth.steps`가 있으면 본 `steps` 전에 **녹화하지 않는 별도 컨텍스트**에서 실행하고, 로그인 상태(쿠키·localStorage·IndexedDB·sessionStorage)만 녹화 컨텍스트로 넘긴다. 마지막 로그인 클릭 뒤에는 페이지가 넘어갈 때까지(최대 8초) 기다린다(로그인 요청이 끊기지 않게). 스크린샷·`capture.json`에 넣지 않고, 값·URL을 로그에 쓰지 않는다. 실패해도 멈추지 않고 본 단계로 간다. 예시: `contracts/fixtures/scenario.auth.json`.
 - auth(로그인) 값은 영상·스크린샷·로그·`capture.json` 어디에도 남기지 않는다. 일반 단계 입력값은 가리지 않는다(LLM이 만든 데모 문구이고, 입력 장면이 움직임의 핵심이라서).
 - 녹화: 본 단계를 1280x720로 녹화해 `<runDir>/capture.webm` + `capture.video`, 단계별 `clip`(녹화 시작 기준 ms)을 기록한다. `goto` clip은 페이지 load 뒤부터 시작하고(로딩 중 빈 화면 제외), 단계 뒤 결과 화면을 1.5초 더 녹화해 clip에 넣고, 앞 여유(0.3초)는 앞 clip 끝과 겹치지 않게 자른다. 녹화 안에서 로그인하지 않는다. 녹화가 실패하면(ffmpeg 없음 포함) `video`·`clip` 없이 정지 화면만 낸다.
-- click 단계는 `clip.startMs + 0.8초`에 클릭한다. 렌더 ScreenScene의 커서 박자(0.1~0.8초 이동, 0.8초 클릭)와 같으므로 한쪽을 바꾸면 둘 다 바꾼다. `type`은 한 글자씩(60ms), 스크롤은 나눠서 움직인다.
+- click·type 단계는 `clip.startMs + 0.8초`에 클릭한다(type은 그다음 입력). 렌더 ScreenScene의 커서 박자(0.1~0.8초 이동, 0.8초 클릭)와 같으므로 한쪽을 바꾸면 둘 다 바꾼다. `type`은 한 글자씩(60ms), 스크롤은 나눠서 움직인다.
 - **Flutter web**(`flutter-view`·`flt-glass-pane` 요소가 있는 페이지)은 canvas라 그대로는 셀렉터가 없다. 페이지를 연 뒤 `document.querySelector('flt-semantics-placeholder')?.click()`으로 semantics를 켜면 `role=button[name="…"]`·`role=textbox[name="…"]` 셀렉터가 동작한다(A의 scenario가 이 형식을 쓴다). 해시 URL(`/#/x`)도 그대로 `baseUrl + path`로 연다.
