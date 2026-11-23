@@ -7,7 +7,7 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import type { Page } from "playwright";
 import type { Scenario } from "@demoday/contracts";
@@ -115,6 +115,37 @@ export async function elements(page: Page): Promise<UiElement[]> {
     .catch(() => []);
 }
 
+/**
+ * 재생 때 쓸 셀렉터 — 실행 전에 실제로 같은 요소를 찾는지 확인한다(#68).
+ * 관찰 이름(innerText)과 접근성 이름이 다르면(aria-hidden 평점·aria-label 등) Playwright 가 계산한 role·이름으로 바꾼다.
+ * 둘 다 안 되면 그대로 두고 경고(재생 때 그 단계만 fallback).
+ */
+export async function replayableSelector(page: Page, e: UiElement): Promise<string> {
+  const mine = String(e.id);
+  const finds = (sel: string) =>
+    page
+      .locator(sel)
+      .evaluate((el, attr) => el.getAttribute(attr), ATTR, { timeout: 1000 })
+      .then((v) => v === mine)
+      .catch(() => false);
+  const first = stableSelector(e);
+  // 임시 번호(data-demoday-id)는 녹화 페이지에서만 찾아진다 — 재생용으로 검증하지 않고 접근성 이름부터(#70 리뷰)
+  const temporary = first.includes(ATTR);
+  if (!temporary && (await finds(first))) return first;
+  const aria = await page
+    .locator(`[${ATTR}="${mine}"]`)
+    .ariaSnapshot({ timeout: 1000 })
+    .catch(() => "");
+  const m = /^- ([a-z]+) "((?:[^"\\]|\\.)*)"/.exec(aria);
+  if (m) {
+    // 계산된 이름은 설명 문단까지 길게 붙기도 한다 — 앞 40자 정규식(stableSelector 와 같은 형식)
+    const sel = stableSelector({ ...e, css: undefined, role: m[1], name: (JSON.parse(`"${m[2]}"`) as string).slice(0, 40) });
+    if (await finds(sel)) return sel;
+  }
+  console.warn(`! 재생용 셀렉터 확인 실패 — 재생 때 못 찾을 수 있음: ${first}`);
+  return first;
+}
+
 /** scenario.json 에 남길 안정적인 셀렉터. 실행은 data-demoday-id 로 하고, 기록은 다시 돌려도 찾을 수 있는 이름 기반으로. */
 export function stableSelector(e: UiElement): string {
   if (e.css) return `${e.css} >> visible=true >> nth=0`;
@@ -167,8 +198,13 @@ async function scriptDecider(file: string): Promise<Decider> {
   };
 }
 
-function processDecider(cmd: string): Decider {
-  const child: ChildProcessWithoutNullStreams = spawn(cmd, { shell: true, stdio: ["pipe", "pipe", "pipe"] });
+/**
+ * 에이전트 프로세스. run 디렉터리는 캡처가 가장 정확히 아니 직접 넘긴다(관찰의 screenshot 기준 경로).
+ * PYTHONUTF8: Windows 기본 인코딩(cp949)이면 프롬프트 파일·한글 JSON 을 못 읽는다.
+ */
+function processDecider(cmd: string, runDir: string): Decider {
+  const env = { ...process.env, DEMODAY_RUN_DIR: resolve(runDir), PYTHONUTF8: "1" };
+  const child: ChildProcessWithoutNullStreams = spawn(cmd, { shell: true, env, stdio: ["pipe", "pipe", "pipe"] });
   child.stderr.on("data", (d) => process.stderr.write(`  [agent] ${d}`));
   const lines: Interface = createInterface({ input: child.stdout });
   const queue: ((line: string | null) => void)[] = [];
@@ -225,7 +261,7 @@ export async function* agentSteps(o: AgentOptions, executed: Step[]): AsyncGener
 
   let decider: Decider;
   try {
-    decider = o.script ? await scriptDecider(o.script) : processDecider(o.cmd);
+    decider = o.script ? await scriptDecider(o.script) : processDecider(o.cmd, o.runDir);
   } catch (e) {
     console.warn(`! 에이전트 시작 실패 — 시나리오 단계로: ${e instanceof Error ? e.message : e}`);
     yield* fallback(o.scenario, executed);
@@ -284,7 +320,7 @@ export async function* agentSteps(o: AgentOptions, executed: Step[]): AsyncGener
         a.action === "scroll"
           ? { id, action: "scroll", caption }
           : { id, action: a.action, selector: `[${ATTR}="${a.id}"]`, caption, ...(a.value !== undefined && { value: a.value }) };
-      executed.push(el && run.selector ? { ...run, selector: stableSelector(el) } : run);
+      executed.push(el && run.selector ? { ...run, selector: await replayableSelector(o.page, el) } : run);
       console.log(`  → ${a.action}${el ? ` "${el.name}"` : ""}${a.value ? ` "${a.value}"` : ""}`);
       yield run;
       history[history.length - 1].ok = o.lastOk(); // capture 루프가 실행한 결과
