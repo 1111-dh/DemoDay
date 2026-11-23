@@ -463,3 +463,21 @@ def test_onboarding_pages_are_not_demo():  # 온보딩을 마친 데모 계정 �
         assert not _demo_page(p, False), p
     assert not _shown("/onboarding/:workspaceId/:step")
     assert _demo_page("/workspaces", False) and _demo_page("/settings", False)
+
+
+def test_scroll_steps_are_grounded():  # 긴 랜딩 페이지(채움)의 아래 내용을 보여준다
+    draft = ScenarioDraft(
+        steps=[
+            step("goto", path="/"),
+            step("scroll", caption="서비스 소개 훑어보기"),
+            step("click", selector="text=검색"),
+            step("scroll"),
+            step("scroll"),
+            step("scroll"),  # 같은 화면 연속 스크롤은 2번까지
+        ]
+    )
+    steps = ground(draft, facts())
+    assert [s["action"] for s in steps] == ["goto", "scroll", "click", "scroll", "scroll"]
+    assert steps[1] == {"id": 2, "action": "scroll", "caption": "서비스 소개 훑어보기"}
+    sc = {"baseUrl": BASE, "steps": steps}
+    assert schema_errors("scenario", sc) == []
