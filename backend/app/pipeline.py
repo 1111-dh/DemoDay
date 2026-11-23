@@ -8,6 +8,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import httpx
+
 from app import llm, paths, runs, vision
 from app.scene import build_scene
 
@@ -103,22 +105,34 @@ def _summary(e: Exception) -> str:
 SITE_DOWN = "배포 주소에 접속하지 못했어요(모든 페이지 이동 실패)"
 
 
+def _site_alive(url: str) -> bool:
+    """배포 주소가 응답하는지(2xx·3xx). 연결 실패·4xx·5xx(Vercel 404 등)면 False."""
+    try:
+        res = httpx.get(url, timeout=10, follow_redirects=True)
+    except httpx.HTTPError:
+        return False
+    return res.status_code < 400
+
+
 def _site_unreachable(d: Path) -> bool:
-    """페이지 이동(goto)이 하나도 성공하지 못했다 — 사이트가 죽어 있다.
+    """사이트가 죽어 있다 — 페이지 이동(goto)이 하나도 성공하지 못했고, 배포 주소도 응답하지 않는다.
 
     이때 오류 페이지(Vercel 404 등)에서 한 scroll·click 이 'ok' 로 남아 오류 화면이 영상에
-    들어간다(11/24 실측). 이동이 하나라도 됐으면 정상으로 본다.
+    들어간다(11/24 실측). goto 는 로딩 화면에서 멈춤·로그인 리다이렉트로도 실패하니
+    (사이트는 산 경우) 주소에 직접 물어서 정말 죽었을 때만 True — 에이전트 모드처럼
+    goto 가 하나뿐일 때 오판하지 않게.
     """
     try:
-        steps = json.loads((d / "scenario.json").read_text())["steps"]
+        scenario = json.loads((d / "scenario.json").read_text())
         shots = json.loads((d / "capture.json").read_text())["shots"]
     except (OSError, ValueError, KeyError):
         return False
-    gotos = {s["id"] for s in steps if s.get("action") == "goto"}
+    gotos = {s["id"] for s in scenario.get("steps", []) if s.get("action") == "goto"}
     tried = [s for s in shots if s.get("stepId") in gotos]
-    return bool(tried) and all(
+    all_failed = bool(tried) and all(
         s.get("status", "ok") != "ok" for s in tried
-    )  # status 없으면 ok(계약)
+    )  # 없으면 ok(계약)
+    return all_failed and not _site_alive(scenario.get("baseUrl", ""))
 
 
 def _capture_or_empty(rid: str, d: Path) -> None:

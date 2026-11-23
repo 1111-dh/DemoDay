@@ -369,9 +369,17 @@ def test_site_unreachable_is_treated_like_capture_failure(client, monkeypatch):
         )
 
     monkeypatch.setattr(pipeline, "run_capture", dead_site)
+    monkeypatch.setattr(pipeline, "_site_alive", lambda url: False)
     rid = create(client)["id"]
     client.post(f"/api/runs/{rid}/build", json={})
     run = client.get(f"/api/runs/{rid}").json()
     assert run["stage"] == "done"
     assert "접속" in run["warning"]
     assert all(s["type"] != "screen" for s in run["scene"]["scenes"])
+
+    # 사이트가 살아 있으면(로딩 화면에서 멈춤·로그인 리다이렉트로 goto 만 실패) 화면을 버리지 않는다
+    monkeypatch.setattr(pipeline, "_site_alive", lambda url: True)
+    rid = create(client)["id"]
+    client.post(f"/api/runs/{rid}/build", json={})
+    run = client.get(f"/api/runs/{rid}").json()
+    assert "warning" not in run
