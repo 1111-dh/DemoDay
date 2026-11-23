@@ -31,6 +31,7 @@
 | GET | `/api/runs/{id}/files/{path}` | — | run 디렉터리 파일(`shots/2.png`, `preview.mp4`). 밖 경로·없는 파일 → 404 |
 
 - `stage`: `created` → `analyzed` → (`queued` → `capturing` → `scening` → `rendering` → `done`) / 실패 시 `error` + `error` 메시지. 웹은 `done`·`error`가 될 때까지 `GET /api/runs/{id}`를 폴링한다(1~2초).
+- 영상 길이: `totalSec`은 **최대 길이**다. scene 은 장면마다 내용만큼 길이를 잡고(카드는 글자 수로 2~4초, 화면은 녹화 구간 길이) `scene.totalSec = min(요청, 내용 합)`으로 쓴다. 짧은 내용을 요청 길이까지 늘리지 않는다(루즈해진다).
 - 캡처가 통째로 실패하면(사이트 응답 없음 등) 빈 capture.json으로 계속해 화면 없이(제목·문제·정리 카드·아키텍처) 영상을 만들고 `stage: "done"` + `warning` 메시지를 남긴다. 다음 build 때 지워진다.
 - scene 안의 이미지 경로(`shots/2.png`)는 `/api/runs/{id}/files/` 뒤에 붙여 쓴다. 없는 run id → 404.
 - `auth`(캡처 전 로그인, `{steps: Step[]}`)는 run 디렉터리의 scenario.json에만 실제 값으로 저장하고 LLM·캐시에는 넣지 않는다. 응답의 scenario에서는 `value`와 경로의 쿼리가 `***`로 가려진다. 가린 채로 `PUT /scenario`하면 저장된 값을 유지하고, 바꾸려면 새 값을 보낸다. CLI·e2e는 `--auth <file>` / `make e2e … AUTH=<file>`.
