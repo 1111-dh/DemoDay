@@ -130,3 +130,19 @@ def test_groq_rate_limit_wait_is_capped_and_gives_up():
     llm = _groq(lambda req: _rate_limited("90s"), sleeps)
     assert llm.parse(system="s", user="u", output=Out) is None
     assert sleeps == [MAX_RATE_WAIT] * RATE_RETRIES
+
+
+def test_groq_error_log_hides_org_id(caplog):  # #36 — 로그에 Groq 조직 ID 가 찍혔다
+    import httpx
+
+    body = {
+        "error": {
+            "message": "Request too large in organization `org_01abc` on TPM",
+            "code": "rate_limit_exceeded",
+        }
+    }
+    llm = _groq(lambda req: httpx.Response(413, json=body))
+    with caplog.at_level("WARNING"):
+        assert llm.parse(system="s", user="u", output=Out) is None
+    assert "org_01abc" not in caplog.text
+    assert "413" in caplog.text and "rate_limit_exceeded" in caplog.text
