@@ -22,11 +22,11 @@ from app.contracts import schema_errors
 from app.github import RepoSnapshot, fetch_repo
 from app.llm import LLM, generate
 
-MAX_STEPS = 7
+MAX_STEPS = 12  # 영상이 너무 짧다는 피드백(11/24) — 기능을 더 보여준다
 MAX_SCROLLS = 2  # 같은 화면에서 이어지는 스크롤 (긴 랜딩 페이지)
 MAX_PROMPT = 500
 README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
-SCENARIO_VERSION = 12  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 13  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()

@@ -6,7 +6,7 @@ import pytest
 from app import paths
 from app.analyze.facts import RepoFacts
 from app.contracts import schema_errors
-from app.scene import SceneCopy, assemble, build_scene
+from app.scene import SceneCopy, assemble, build_scene, fill
 from tests.fakes import FakeLLM
 
 FIXTURES = paths.ROOT / "contracts" / "fixtures"
@@ -34,14 +34,14 @@ def test_assemble_without_copy_matches_contract(scenario, capture):
     assert (title["text"], title["subtitle"], title["durationSec"]) == (
         "DemoDay",
         "레포로 만드는 데모 영상",
-        3,
+        4.5,
     )
     clicked = doc["scenes"][2]
     assert clicked["image"] == "shots/2.png"
     assert clicked["caption"] == "검색 기능"  # scenario step 2 caption
     assert clicked["zoom"] == {"x": 640, "y": 120, "scale": 1.6}
     assert clicked["cursor"] == {"x": 640, "y": 120}
-    assert clicked["durationSec"] == 4
+    assert clicked["durationSec"] == 4.5  # SCREEN_MIN
     assert doc["scenes"][3]["nodes"] == ["Next.js", "Supabase"]
 
 
@@ -80,7 +80,7 @@ def test_copy_applied_and_weights_clamped(scenario, capture):
     title, s1, s2 = doc["scenes"]
     assert title["text"] == "데모데이" and "subtitle" not in title
     assert (s1["caption"], s1["durationSec"]) == ("첫 화면", 8)
-    assert (s2["caption"], s2["durationSec"]) == ("검색", 2)
+    assert (s2["caption"], s2["durationSec"]) == ("검색", 4.5)  # 가벼운 화면도 SCREEN_MIN
     assert schema_errors("scene", doc) == []
 
 
@@ -218,7 +218,7 @@ def test_clip_becomes_video(scenario):
     doc = assemble(scenario, shots, FACTS, 60, False, None, video="capture.webm")
     s1, s2 = doc["scenes"][1:]
     assert s1["video"] == {"src": "capture.webm", "startMs": 1200, "endMs": 4700}
-    assert s1["durationSec"] == 3.5 and s2["durationSec"] == 8  # MAX_CLIP_SEC
+    assert s1["durationSec"] == 4.5 and s2["durationSec"] == 9  # SCREEN_MIN, MAX_CLIP_SEC
     assert schema_errors("scene", doc) == []
     no_video = assemble(scenario, shots, FACTS, 60, False, None)
     assert all("video" not in s for s in no_video["scenes"])
@@ -283,7 +283,7 @@ def test_bad_clip_falls_back_to_image(scenario, clip):  # Task 6~7 리뷰 #1
     screen = assemble(scenario, _clip_shots(clip), FACTS, 60, False, None, video="capture.webm")[
         "scenes"
     ][1]
-    assert "video" not in screen and screen["durationSec"] == 4
+    assert "video" not in screen and screen["durationSec"] == 4.5
 
 
 def test_build_scene_tolerates_null_login(tmp_path):  # Task 6~7 리뷰 #7 — 실패해도 영상은 나와야
@@ -339,7 +339,7 @@ def test_card_length_follows_text_length(scenario, capture):
         False,
         _copy(problem="임대인이 빈 상가에 맞는 업종을 판단하기 어려워요"),
     )
-    assert short["scenes"][1]["durationSec"] < long["scenes"][1]["durationSec"] <= 4
+    assert short["scenes"][1]["durationSec"] < long["scenes"][1]["durationSec"] <= 5
 
 
 def _pt(icon, text):
@@ -366,7 +366,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
     problem, solution = scenes[1], scenes[2]
     assert problem == {
         "type": "points",
-        "durationSec": 3.5,  # 1.5초 + 항목당 1초
+        "durationSec": 5.0,  # 3초 + 항목당 1초
         "kicker": "문제",
         "heading": "회의 정리는 늘 PM 몫이에요",
         "items": [
@@ -374,7 +374,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
             {"icon": "alert", "text": "담당자가 흐려져요"},
         ],
     }
-    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 4.5, 3)
+    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 6.0, 3)
     assert scenes[3]["type"] == "screen"
     assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
 
@@ -454,3 +454,16 @@ def test_focus_zooms_screen_without_click(scenario):
     screen = assemble(scenario, shots, FACTS, 60, False, None)["scenes"][1]
     assert screen["zoom"] == {"x": 213, "y": 600, "scale": FOCUS_ZOOM} and "cursor" not in screen
     assert schema_errors("scene", assemble(scenario, shots, FACTS, 60, False, None)) == []
+
+
+def test_fill_stretches_only_recorded_screens(scenario):
+    shots = _clip_shots({"startMs": 0, "endMs": 2000}, {"startMs": 2000, "endMs": 4000})
+    doc = assemble(scenario, shots, FACTS, 60, False, None, video="capture.webm")
+    title_sec = doc["scenes"][0]["durationSec"]
+    filled = fill(doc, 60)
+    s1, s2 = filled["scenes"][1:]
+    assert s1["durationSec"] == s2["durationSec"] == 7.0  # FILL_MAX 까지만
+    assert filled["scenes"][0]["durationSec"] == title_sec  # 카드는 그대로
+    assert filled["totalSec"] == title_sec + 14
+    short = fill(doc, 12)
+    assert short["totalSec"] == 12 and schema_errors("scene", short) == []

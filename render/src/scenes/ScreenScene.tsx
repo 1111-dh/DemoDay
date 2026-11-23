@@ -1,18 +1,25 @@
 import { AbsoluteFill, Easing, Freeze, getStaticFiles, Img, interpolate, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { ScreenScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
+import { Backdrop, fitFont, Words } from "../motion";
 
 const W = 1280;
 const H = 720;
-/** 브라우저 카드 안 화면 배율. 화면 내부는 캡처 좌표(1280x720) 그대로 그리고 통째로 줄인다. */
-const S = 0.86;
 const BAR = 36;
 
 /** 녹화 구간을 장면 길이에 맞추는 재생 속도 범위. 벗어나면 마지막 프레임에서 멈춘다. */
 const RATE_MIN = 0.5;
 const RATE_MAX = 2;
 
-type Props = { scene: T; domain?: string; durationInFrames: number };
+type Props = { scene: T; domain?: string; durationInFrames: number; index?: number; count?: number };
+
+/** 화면마다 돌아가며 바뀌는 연출 — 같은 '보여주고 → 확대'가 반복되지 않게(11/24 피드백). */
+type Layout = "center" | "split" | "tilt" | "wide";
+const LAYOUTS: Layout[] = ["center", "split", "tilt", "wide"];
+/** 레이아웃별 카메라(클릭이 없는 화면): 다가가기 / 물러나며 전체 보여주기 / 옆으로 훑기 */
+const CAMERA: Record<Layout, "push" | "pull" | "pan"> = { center: "push", split: "pull", tilt: "pan", wide: "push" };
+/** 브라우저 카드 배율 */
+const SCALE: Record<Layout, number> = { center: 0.84, split: 0.64, tilt: 0.8, wide: 0.9 };
 type Media = { src: string; trimBefore: number; rate: number; playFrames: number };
 
 /** 재생할 녹화 구간. 파일이 없거나 구간이 잘못됐으면 null → 정지 화면(image). */
@@ -31,39 +38,61 @@ function media(scene: T, sceneFrames: number, fps: number): Media | null {
 }
 
 /**
- * 밝은 배경 위 브라우저 카드 + 커서 이동 → 클릭 하이라이트 → 줌 인 + 좌하단 자막.
- * 좌표는 캡처 viewport(1280x720) 기준 px.
+ * 배경 위 브라우저 카드 + 커서 이동 → 클릭 하이라이트 → 카메라 + 자막. 좌표는 캡처 viewport(1280x720) 기준 px.
+ * index(화면 순번)에 따라 레이아웃이 center → split(왼쪽 큰 자막) → tilt(3D 기울기) → wide(꽉 찬 화면)로 돈다.
  */
-export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames }) => {
+export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames, index = 0, count = 0 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const m = media(scene, durationInFrames, fps);
-  const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 0.6 * fps });
+  const layout = LAYOUTS[index % LAYOUTS.length];
+  const S = SCALE[layout];
+  const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 0.7 * fps });
+  const cardW = W * S;
+  const cardH = H * S + BAR;
+  const left = layout === "split" ? W - cardW - 56 : (W - cardW) / 2;
+  const top = (H - cardH) / 2 - (layout === "center" ? 10 : 0);
+  const tilt = interpolate(frame, [0, durationInFrames], [0, 1]);
+  const transform = {
+    center: `translateY(${interpolate(enter, [0, 1], [40, 0])}px) scale(${interpolate(enter, [0, 1], [0.96, 1])})`,
+    split: `translateX(${interpolate(enter, [0, 1], [120, 0])}px)`,
+    tilt: `perspective(1800px) rotateY(${interpolate(enter, [0, 1], [-28, -9]) + tilt * 5}deg) rotateX(${interpolate(enter, [0, 1], [10, 4])}deg) translateX(${interpolate(enter, [0, 1], [60, 0])}px)`,
+    wide: `scale(${interpolate(enter, [0, 1], [1.06, 1])})`,
+  }[layout];
+  const step = count > 1 ? `${String(index + 1).padStart(2, "0")}` : undefined;
 
   return (
-    <AbsoluteFill style={{ background: theme.bg, fontFamily: theme.font }}>
+    <AbsoluteFill style={{ fontFamily: theme.font }}>
+      <Backdrop seed={index + 4} />
       <div
         style={{
           position: "absolute",
-          left: (W - W * S) / 2,
-          top: (H - (H * S + BAR)) / 2 - 12,
-          width: W * S,
-          height: H * S + BAR,
-          borderRadius: 14,
+          left,
+          top,
+          width: cardW,
+          height: cardH,
+          borderRadius: 16,
           overflow: "hidden",
           background: "white",
-          boxShadow: "0 24px 60px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)",
-          transform: `translateY(${interpolate(enter, [0, 1], [16, 0])}px)`,
+          boxShadow: "0 30px 80px rgba(0,0,0,0.20), 0 2px 8px rgba(0,0,0,0.08)",
+          transform,
+          transformOrigin: layout === "tilt" ? "60% 50%" : "50% 50%",
+          opacity: interpolate(enter, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }),
         }}
       >
         <AddressBar domain={domain} />
-        <div style={{ width: W * S, height: H * S, overflow: "hidden", position: "relative" }}>
+        <div style={{ width: cardW, height: H * S, overflow: "hidden", position: "relative" }}>
           <div style={{ width: W, height: H, transform: `scale(${S})`, transformOrigin: "0 0" }}>
-            <Screen scene={scene} media={m} total={durationInFrames} />
+            <Screen scene={scene} media={m} total={durationInFrames} mode={CAMERA[layout]} />
           </div>
         </div>
       </div>
-      {scene.caption && <Caption text={scene.caption} highlight={scene.highlight} />}
+      {scene.caption &&
+        (layout === "split" ? (
+          <SideCaption text={scene.caption} highlight={scene.highlight} step={step} count={count} width={left - 100} />
+        ) : (
+          <Caption text={scene.caption} highlight={scene.highlight} step={step} place={layout === "wide" ? "middle" : layout === "tilt" ? "right" : "left"} />
+        ))}
     </AbsoluteFill>
   );
 };
@@ -76,22 +105,39 @@ const ease = { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easi
  * - 클릭(cursor 있음): 클릭(0.8초) 직후 0.8초 동안 확대. 녹화가 있고 장면이 충분히 길면 끝 1초 동안 전체로 돌아와 결과를 보여준다
  * - 핵심 영역(cursor 없음): 0.3초부터 장면 끝까지 천천히 다가간다 — 설명하는 곳에 시선이 머물게
  */
-function zoom(scene: T, frame: number, total: number, s: (sec: number) => number, video: boolean): string | undefined {
-  const z = scene.zoom;
-  if (!z) return undefined;
+type Mode = "push" | "pull" | "pan";
+
+function zoom(scene: T, frame: number, total: number, s: (sec: number) => number, video: boolean, mode: Mode): string | undefined {
+  // 줌 지점이 없는 화면도 멈춰 있지 않게 가운데를 기준으로 약하게 움직인다
+  const z = scene.zoom ?? { x: W / 2, y: H / 2, scale: 1.12 };
   let p: number;
+  let k: number;
+  let tx = z.x;
+  let ty = z.y;
   if (scene.cursor) {
     const inEnd = s(1.6);
     p = interpolate(frame, [s(0.8), inEnd], [0, 1], ease);
     const outStart = total - s(1);
     if (video && outStart > inEnd + s(0.6)) p *= 1 - interpolate(frame, [outStart, total - s(0.2)], [0, 1], ease);
+    k = 1 + (z.scale - 1) * p;
+  } else if (mode === "pull") {
+    // 핵심 영역에 붙어 있다가 물러나며 전체를 보여준다
+    p = 1 - interpolate(frame, [s(0.2), Math.max(s(0.2) + 1, total - s(0.4))], [0, 1], ease);
+    k = 1 + (Math.max(z.scale, 1.25) - 1) * p;
+  } else if (mode === "pan") {
+    // 살짝 확대한 채 왼쪽에서 핵심 영역 쪽으로 훑는다
+    const q = interpolate(frame, [0, total], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+    k = Math.max(1.18, Math.min(z.scale, 1.3));
+    p = 1;
+    tx = interpolate(q, [0, 1], [W * 0.3, Math.max(W * 0.55, z.x)]);
+    ty = interpolate(q, [0, 1], [H * 0.4, z.y]);
   } else {
     p = interpolate(frame, [s(0.3), Math.max(s(0.3) + 1, total - s(0.3))], [0, 1], ease);
+    k = 1 + (z.scale - 1) * p;
   }
-  const k = 1 + (z.scale - 1) * p;
   const fit = (c: number, size: number) => Math.min(size - size / (2 * k), Math.max(size / (2 * k), c));
-  const cx = fit(interpolate(p, [0, 1], [W / 2, z.x]), W);
-  const cy = fit(interpolate(p, [0, 1], [H / 2, z.y]), H);
+  const cx = fit(interpolate(p, [0, 1], [W / 2, tx]), W);
+  const cy = fit(interpolate(p, [0, 1], [H / 2, ty]), H);
   return `translate(${W / 2 - cx * k}px, ${H / 2 - cy * k}px) scale(${k})`;
 }
 
@@ -99,7 +145,7 @@ function zoom(scene: T, frame: number, total: number, s: (sec: number) => number
  * 캡처 좌표계(1280x720) 안: 화면(녹화 구간 또는 정지 화면) + 커서 + 클릭 하이라이트 + 줌.
  * 녹화를 빠르게/느리게 재생하면 클릭 시각도 같이 움직이므로 커서 박자를 재생 속도로 나눈다.
  */
-const Screen: React.FC<{ scene: T; media: Media | null; total: number }> = ({ scene, media: m, total }) => {
+const Screen: React.FC<{ scene: T; media: Media | null; total: number; mode: Mode }> = ({ scene, media: m, total, mode }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = (sec: number) => (sec * fps) / (m?.rate ?? 1);
@@ -113,7 +159,7 @@ const Screen: React.FC<{ scene: T; media: Media | null; total: number }> = ({ sc
   });
   const press = spring({ frame, fps, delay: s(0.8), config: { damping: 200 }, durationInFrames: s(0.6) });
 
-  const camera = zoom(scene, frame, total, s, Boolean(m));
+  const camera = zoom(scene, frame, total, s, Boolean(m), mode);
 
   return (
     <AbsoluteFill style={{ transform: camera, transformOrigin: "0 0" }}>
@@ -186,31 +232,60 @@ function emphasize(text: string, words: string[] = []) {
   return text.split(re).map((part, i) => (ws.includes(part) ? <span key={i} style={{ color: theme.accent }}>{part}</span> : part));
 }
 
-const Caption: React.FC<{ text: string; highlight?: string[] }> = ({ text, highlight }) => {
+/** 자막 상자. place: left(왼쪽 아래) · right(오른쪽 아래) · middle(가운데 아래). step이 있으면 앞에 주황 순번. */
+const Caption: React.FC<{ text: string; highlight?: string[]; step?: string; place: "left" | "right" | "middle" }> = ({ text, highlight, step, place }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const p = spring({ frame, fps, delay: 0.3 * fps, config: { damping: 200 } });
+  const p = spring({ frame, fps, delay: 0.3 * fps, config: { damping: 18, mass: 0.7 } });
+  const pos: React.CSSProperties =
+    place === "middle" ? { left: "50%", bottom: 34 } : place === "right" ? { right: 56, bottom: 34 } : { left: 56, bottom: 34 };
   return (
     <div
       style={{
         position: "absolute",
-        left: 56,
-        bottom: 34,
+        ...pos,
         maxWidth: W * 0.62,
-        padding: "14px 24px",
-        borderRadius: 10,
-        background: theme.label,
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "14px 26px 14px 16px",
+        borderRadius: 14,
+        background: "rgba(17,17,19,0.92)",
         color: "white",
-        fontSize: 30,
-        fontWeight: 600,
-        lineHeight: 1.35,
+        fontSize: 32,
+        fontWeight: 700,
+        lineHeight: 1.3,
+        letterSpacing: "-0.01em",
         ...theme.keepAll,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-        opacity: p,
-        transform: `translateY(${interpolate(p, [0, 1], [20, 0])}px)`,
+        boxShadow: "0 14px 36px rgba(0,0,0,0.28)",
+        opacity: interpolate(p, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }),
+        transform: `${place === "middle" ? "translateX(-50%) " : ""}translateY(${interpolate(p, [0, 1], [24, 0])}px)`,
+        clipPath: `inset(0 ${interpolate(p, [0, 1], [100, 0], { extrapolateRight: "clamp" })}% 0 0 round 14px)`,
       }}
     >
-      {emphasize(text, highlight)}
+      {step && (
+        <span style={{ flexShrink: 0, padding: "4px 10px", borderRadius: 8, background: theme.accent, fontSize: 20, fontWeight: 700 }}>{step}</span>
+      )}
+      <span>{emphasize(text, highlight)}</span>
+    </div>
+  );
+};
+
+/** split 레이아웃: 왼쪽 빈 공간에 큰 순번 + 단어별로 올라오는 큰 자막. */
+const SideCaption: React.FC<{ text: string; highlight?: string[]; step?: string; count: number; width: number }> = ({ text, highlight, step, count, width }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const bar = spring({ frame, fps, delay: 0.5 * fps, config: { damping: 200 } });
+  return (
+    <div style={{ position: "absolute", left: 64, top: 0, bottom: 0, width, display: "flex", flexDirection: "column", justifyContent: "center", color: theme.ink, ...theme.keepAll }}>
+      {step && (
+        <div style={{ fontSize: 22, fontWeight: 700, color: theme.accent, marginBottom: 18, opacity: bar }}>
+          {step}
+          <span style={{ color: theme.sub, fontWeight: 600 }}> / {String(count).padStart(2, "0")}</span>
+        </div>
+      )}
+      <Words text={text} delay={0.25} accent={highlight} style={{ fontSize: fitFont(text, width - 8, 44), fontWeight: 700, lineHeight: 1.22, letterSpacing: "-0.03em", maxWidth: width }} />
+      <div style={{ marginTop: 26, width: 64 * bar, height: 6, borderRadius: 3, background: theme.accent }} />
     </div>
   );
 };

@@ -16,6 +16,10 @@ export const theme = {
   sub: "#6b6b70",
   accent: "#f26b1d",
   label: "#111113",
+  /** 어두운 장(문제) 배경 */
+  night: "#16161a",
+  red: "#e0483e",
+  green: "#2f9e5b",
   /** 한국어가 단어 중간에서 줄바꿈되지 않고, 끝 단어가 혼자 내려가지 않게 */
   keepAll: { wordBreak: "keep-all" as const, textWrap: "balance" as const },
   font: "Pretendard, sans-serif",

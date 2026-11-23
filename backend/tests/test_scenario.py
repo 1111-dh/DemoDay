@@ -84,9 +84,9 @@ def test_ground_inserts_root_goto():
     ]
 
 
-def test_ground_truncates_to_seven():
-    draft = ScenarioDraft(steps=[step("goto", path="/")] * 10)
-    assert len(ground(draft, facts())) == 7
+def test_ground_truncates_to_max_steps():
+    draft = ScenarioDraft(steps=[step("goto", path="/")] * 15)
+    assert len(ground(draft, facts())) == 12
 
 
 def test_default_scenario_valid():

@@ -12,16 +12,17 @@ import { PointsScene } from "./scenes/PointsScene";
 import { theme } from "./theme";
 
 /** 장면 type → 컴포넌트. 새 장면 type은 스키마 → make gen → 여기 case 추가 순서로. */
-function renderScene(scene: Scene, frames: number, domain?: string) {
+/** shot = 화면 장면 중 몇 번째인지(0부터), shots = 화면 장면 수 — 화면마다 연출을 바꾸는 데 쓴다. */
+function renderScene(scene: Scene, frames: number, domain: string | undefined, shot: number, shots: number) {
   switch (scene.type) {
     case "title":
-      return <TitleScene scene={scene} />;
+      return <TitleScene scene={scene} durationInFrames={frames} />;
     case "screen":
-      return <ScreenScene scene={scene} domain={domain} durationInFrames={frames} />;
+      return <ScreenScene scene={scene} domain={domain} durationInFrames={frames} index={shot} count={shots} />;
     case "architecture":
       return <ArchitectureScene scene={scene} />;
     case "points":
-      return <PointsScene scene={scene} />;
+      return <PointsScene scene={scene} durationInFrames={frames} />;
     default: {
       const never: never = scene;
       throw new Error(`알 수 없는 장면 type: ${JSON.stringify(never)}`);
@@ -62,6 +63,8 @@ export type DemoProps = SceneDoc & { domain?: string } & Record<string, unknown>
 export const Demo: React.FC<DemoProps> = (doc) => {
   const frames = fitFrames(doc);
   const overlap = overlapFrames(doc, frames);
+  const shotIndex = doc.scenes.map((_, i) => doc.scenes.slice(0, i).filter((s) => s.type === "screen").length);
+  const shots = doc.scenes.filter((s) => s.type === "screen").length;
   return (
     <AbsoluteFill style={{ background: theme.bg }}>
       <TransitionSeries>
@@ -74,7 +77,7 @@ export const Demo: React.FC<DemoProps> = (doc) => {
               />
             )}
             <TransitionSeries.Sequence durationInFrames={frames[i]}>
-              {renderScene(scene, frames[i], doc.domain)}
+              {renderScene(scene, frames[i], doc.domain, shotIndex[i], shots)}
             </TransitionSeries.Sequence>
           </Fragment>
         ))}
