@@ -162,10 +162,10 @@ def assemble(
 
     if copy and copy.closing.strip():
         scenes.append(_card(copy.closing.strip(), "정리"))
-    if include_architecture:
-        scenes.append(
-            {"type": "architecture", "durationSec": ARCH_SEC, **infer_architecture(facts)}
-        )
+    arch = infer_architecture(facts) if include_architecture else None
+    # 노드가 하나뿐이면(예: 'Nuxt') 보여줄 구조가 없다 — 한 단어 화면이 4초 이어지지 않게 뺀다
+    if arch and len(arch["nodes"]) >= 2:
+        scenes.append({"type": "architecture", "durationSec": ARCH_SEC, **arch})
     # 영상 길이는 내용만큼 — 요청 길이(total_sec)는 상한. 더 길면 렌더가 비율대로 줄인다.
     # 짧은 내용을 요청 길이까지 늘리면 카드가 늘어지고 화면이 느리게 재생돼 루즈해진다.
     content = round(sum(sc["durationSec"] for sc in scenes), 2)

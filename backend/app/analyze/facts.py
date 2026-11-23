@@ -101,7 +101,22 @@ def _name_and_summary(readme: str, fallback: str) -> tuple[str, str]:
         while (plain := _MD_EMPHASIS.sub(r"\2", text)) != text:  # **…_…_…** 겹친 강조
             text = plain
         para.append(text)
-    return name, " ".join(para)[:SUMMARY_LIMIT]
+    name, tagline = _split_tagline(name)
+    summary = ". ".join(x for x in (tagline, " ".join(para)) if x)
+    return name, summary[:SUMMARY_LIMIT]
+
+
+# '# 채움 — 공실에 맞는 업종 분석'처럼 제목에 붙은 한 줄 소개.
+# 'my-app'의 하이픈은 앞뒤 공백이 없어 안 걸린다
+_TAGLINE = re.compile(r"^(.{1,30}?)\s+[—–|-]\s+(.+)$|^(.{1,30}?):\s+(.+)$")
+
+
+def _split_tagline(title: str) -> tuple[str, str]:
+    """제목을 (서비스 이름, 한 줄 소개)로 — 영상 제목은 이름만, 소개는 부제 재료로."""
+    if m := _TAGLINE.match(title):
+        name, tagline = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        return name.strip(), tagline.strip()
+    return title, ""
 
 
 _BADGE = re.compile(r"^\s*(?:\[!\[|!\[)")

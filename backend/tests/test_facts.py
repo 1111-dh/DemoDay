@@ -246,3 +246,16 @@ def test_layout_tabs_from_model_config_and_hooks_skipped():  # AppHeader → ../
     )
     page = next(p for p in build_facts(snap).pages if p.path == "/w/:id/dashboard")
     assert [e.text for e in page.elements] == ["전체 보기", "회의록", "태스크"]
+
+
+def test_title_tagline_is_split_into_name_and_summary():
+    """채움 README 제목 '# 채움 — 공실에 맞는 업종 분석'."""
+    from app.analyze.facts import _name_and_summary
+
+    readme = "# 채움 — 공실에 맞는 업종 분석\n\n카카오테크 캠퍼스 4기 · 강원대 1팀\n"
+    name, summary = _name_and_summary(readme, "x")
+    assert name == "채움"
+    assert summary == "공실에 맞는 업종 분석. 카카오테크 캠퍼스 4기 · 강원대 1팀"
+    assert _name_and_summary("# Foo: fast bar\n", "x") == ("Foo", "fast bar")
+    # 하이픈 이름은 그대로
+    assert _name_and_summary("# my-app\n\nhello\n", "x") == ("my-app", "hello")
