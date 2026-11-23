@@ -52,7 +52,7 @@ def run_render(run_dir: Path) -> None:
             "render",
             str(run_dir),
             str(run_dir / "preview.mp4"),
-            "--scale=0.5",
+            "--scale=1.5",
         ],
         "렌더",
         RENDER_TIMEOUT,
