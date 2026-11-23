@@ -115,9 +115,9 @@ def post_with_rate_retry(
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "openai/gpt-oss-120b"
-GROQ_FALLBACK = (
-    "openai/gpt-oss-20b"  # 큰 모델의 하루 한도(TPD 20만)를 다 쓰면. 한도는 모델마다 따로
-)
+# 큰 모델의 하루 한도(TPD 20만)를 다 쓰면 — 한도는 모델마다 따로. gpt-oss-20b는 scene JSON
+# 필드를 빠뜨려 실패했고(11/23 실측) qwen은 이미지 읽기와 같은 모델이라 분당 한도를 나눠 쓴다
+GROQ_FALLBACK = "qwen/qwen3.8-27b"
 
 
 class OpenAICompatLLM:

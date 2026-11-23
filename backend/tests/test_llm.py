@@ -201,6 +201,6 @@ def test_get_llm_groq_fallback_model(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "groq")
     monkeypatch.setenv("GROQ_API_KEY", "k")
     monkeypatch.delenv("GROQ_FALLBACK_MODEL", raising=False)
-    assert get_llm().fallback_models == ["openai/gpt-oss-20b"]
+    assert get_llm().fallback_models == ["qwen/qwen3.8-27b"]
     monkeypatch.setenv("GROQ_FALLBACK_MODEL", "")
     assert get_llm().fallback_models == []
