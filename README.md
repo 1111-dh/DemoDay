@@ -6,6 +6,8 @@
 **GitHub 레포 링크와 배포 URL만 넣으면, 실제 서비스 화면을 녹화해 발표용 데모 영상(MP4, 1920×1080)을 만들어 줍니다.**
 캡스톤·종합설계 팀이 발표 전에 데모 영상을 만드는 수고를 덜어 주는 서비스예요. 기획안: [`docs/기획안.md`](docs/기획안.md)
 
+**[DemoDay 공개 시연 열기](https://demoday-topaz.vercel.app/)**
+
 ## 무엇을 해 주나요
 
 - **레포를 읽고 시연 순서를 짜요.** 라우트·버튼·입력칸·README를 분석해서 어떤 화면을 어떤 순서로 보여줄지 시나리오를 만들어요. React Router, Next.js, Vue Router, Nuxt, SvelteKit, Flutter web을 지원해요.
