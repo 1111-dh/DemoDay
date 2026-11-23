@@ -22,13 +22,15 @@ async function verify(browser, touch) {
     const page = await context.newPage();
     const calls = [];
     let saved;
+    let stage = "analyzed";
     await page.route("**/api/runs**", async (route) => {
       const request = route.request();
       const endpoint = new URL(request.url()).pathname;
       calls.push(request.method() + " " + endpoint);
       if (endpoint.endsWith("/scenario")) saved = request.postDataJSON();
+      if (endpoint.endsWith("/build")) stage = "queued";
       await route.fulfill({
-        json: { id: "sort-test", scenario, stage: "queued" },
+        json: { id: "sort-test", scenario: saved || scenario, stage },
       });
     });
     await page.goto(url);
@@ -88,13 +90,19 @@ async function verify(browser, touch) {
     }
     // A new gesture starts after dnd-kit releases its post-drop click guard.
     await page.waitForTimeout(250);
+    await page.getByRole("button", { name: "2번째 장면 삭제" }).click();
+    const edited = await order();
+    assert.equal(edited.length, 3);
+    await page.reload();
+    await handles.first().waitFor();
+    assert.deepEqual(await order(), edited);
     const buildButton = page.getByRole("button", { name: "영상 만들기" });
     if (touch) await buildButton.tap();
     else await buildButton.click();
     await page.locator("progress").waitFor();
     assert.deepEqual(
       saved.steps.map((s) => s.id),
-      touch ? [2, 3, 4, 1] : [2, 3, 1, 4],
+      touch ? [2, 4, 1] : [2, 1, 4],
     );
     for (const step of saved.steps)
       assert.deepEqual(

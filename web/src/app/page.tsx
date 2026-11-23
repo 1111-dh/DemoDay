@@ -19,16 +19,27 @@ const stages: Record<string, string> = {
 };
 const recoveryKey = "demoday.activeRun";
 type Operation = "build" | "scene";
-function rememberRun(id: string, operation: Operation = "build") {
+function rememberRun(
+  id: string,
+  operation: Operation = "build",
+  stepIds?: number[],
+) {
   try {
     if (id)
-      sessionStorage.setItem(recoveryKey, JSON.stringify({ id, operation }));
+      sessionStorage.setItem(
+        recoveryKey,
+        JSON.stringify({ id, operation, stepIds }),
+      );
     else sessionStorage.removeItem(recoveryKey);
   } catch {
     /* The current run still works when browser storage is unavailable. */
   }
 }
-function recalledRun(): { id: string; operation: Operation } | null {
+function recalledRun(): {
+  id: string;
+  operation: Operation;
+  stepIds?: unknown;
+} | null {
   try {
     const saved = JSON.parse(sessionStorage.getItem(recoveryKey) || "null");
     if (
@@ -41,6 +52,18 @@ function recalledRun(): { id: string; operation: Operation } | null {
     /* Ignore unavailable storage or an invalid saved entry. */
   }
   return null;
+}
+function restoreScenario(scenario: Scenario, stepIds: unknown): Scenario {
+  if (
+    !Array.isArray(stepIds) ||
+    !stepIds.length ||
+    new Set(stepIds).size !== stepIds.length
+  )
+    return scenario;
+  const byId = new Map(scenario.steps.map((step) => [step.id, step]));
+  const steps = stepIds.map((id) => byId.get(id));
+  if (!steps.every((step) => step !== undefined)) return scenario;
+  return { ...scenario, steps: steps as Scenario["steps"] };
 }
 class RunRequestError extends Error {
   constructor(
@@ -144,12 +167,16 @@ function Studio() {
         setRepo(data.repo || "");
         setUrl(data.url || "");
         setTotalSec(data.totalSec || 60);
-        if (data.scenario) setScenario(data.scenario);
         if (data.scene) setScene(data.scene);
         if (data.stage === "analyzed" && data.scenario) {
+          const draft = recalledRun();
+          setScenario(
+            restoreScenario(data.scenario, draft && draft.id === data.id ? draft.stepIds : undefined),
+          );
           setPage(1);
           return;
         }
+        if (data.scenario) setScenario(data.scenario);
         setWarning(data.warning || "");
         setStage(data.stage);
         if (data.stage === "error") {
@@ -428,7 +455,10 @@ function Studio() {
               <ScenarioSteps
                 steps={scenario.steps}
                 busy={busy}
-                change={(steps) => setScenario({ ...scenario, steps })}
+                change={(steps) => {
+                  rememberRun(id, "build", steps.map((step) => step.id));
+                  setScenario({ ...scenario, steps });
+                }}
               />
 
               <button
