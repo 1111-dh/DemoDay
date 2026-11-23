@@ -2,8 +2,7 @@ import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } fr
 import type { TitleScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
 
-// TODO(계약 머지 후): kicker가 스키마에 들어오면 캐스트를 지운다 (이슈 #8)
-type Props = { scene: T & { kicker?: string } };
+type Props = { scene: T };
 
 /** kicker가 있으면 장 구분 카드(작은 번호 + 큰 문장, 왼쪽 정렬), 없으면 가운데 타이틀. */
 export const TitleScene: React.FC<Props> = ({ scene }) => {
