@@ -54,6 +54,9 @@ def test_warm_runs_every_sample_and_reports_failures(monkeypatch, tmp_path, caps
     (tmp_path / "samples.json").write_text(json.dumps(samples))
     monkeypatch.setattr(paths, "CACHE", tmp_path / "cache")
     (tmp_path / "cache").mkdir()
+    from app import cli
+
+    monkeypatch.setattr(cli, "WARM_SECS", (60.0,))  # 길이별 반복은 따로 — 여기선 샘플마다 한 번
     from app.analyze.facts import RepoFacts
     from app.scenario import scenario_cache_path
 
@@ -162,6 +165,9 @@ def _warm_agent(monkeypatch, tmp_path, agent_ran: bool):
     )
     monkeypatch.setattr(paths, "CACHE", tmp_path / "cache")
     monkeypatch.setattr(github, "fetch_repo", lambda u: RepoSnapshot(owner="o", repo="r", sha="s"))
+    from app import cli
+
+    monkeypatch.setattr(cli, "WARM_SECS", (60.0,))
 
     def fake_analyze(repo, url, out_dir, _llm, *, fetch, **_):
         fetch(repo)

@@ -24,6 +24,11 @@ from app.contracts import schema_errors
 from app.github import RepoError
 
 WARM_SEC = 60  # 웹 기본 영상 길이 — 시연 캐시는 이 길이의 단계 수로 만든다(캐시 키에 들어간다)
+WARM_SECS = (
+    60.0,
+    90.0,
+    180.0,
+)  # 웹이 고를 수 있는 길이(page.tsx 라디오) — 길이마다 단계 수·캐시 키가 다르다
 
 
 class ContractError(Exception):
@@ -128,8 +133,10 @@ def warm(file: str, agent: bool = False) -> int:
         return snaps[-1]
 
     failed = 0
-    for s in samples:
+    jobs = [(s, sec) for s in samples for sec in WARM_SECS]
+    for s, sec in jobs:
         start = time.monotonic()
+        with_agent = agent and sec == WARM_SEC  # 에이전트 동작은 기본 길이(60초)만 — 오래 걸린다
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 scenario = run_analyze(
@@ -139,29 +146,28 @@ def warm(file: str, agent: bool = False) -> int:
                     get_llm(),
                     prompt=s.get("prompt"),
                     fetch=fetch,
-                    total_sec=WARM_SEC,
+                    total_sec=sec,
                 )
                 facts = RepoFacts.from_json((Path(tmp) / "facts.json").read_text())
-                agent_note = _warm_agent(Path(tmp), snaps[-1], s, facts) if agent else ""
+                agent_note = _warm_agent(Path(tmp), snaps[-1], s, facts) if with_agent else ""
         except Exception as e:  # 시연 준비 — 하나가 깨져도 나머지는 데운다
             failed += 1
-            print(f"✗ {s['repo']} — {e}")
+            print(f"✗ {s['repo']} ({sec:.0f}초) — {e}")
             continue
         snap = snaps[-1]  # 지금 커밋의 시나리오 캐시가 있어야 시연 때 LLM 없이 즉시 나온다
         cache = scenario_cache_path(
-            snap, s["url"], s.get("prompt"), facts, paths.CACHE, step_limit(WARM_SEC)
+            snap, s["url"], s.get("prompt"), facts, paths.CACHE, step_limit(sec)
         )
         llm_made = cache.exists()
         kind = "LLM 시나리오 캐시됨" if llm_made else "규칙 기본값 (LLM 키 확인)"
         took = time.monotonic() - start
-        if agent and not agent_note.startswith(
-            ", 에이전트"
-        ):  # 에이전트를 원했는데 못 했으면 실패로 센다
-            failed += 1
-            print(f"✗ {s['repo']} — 에이전트 캐시 실패{agent_note}, {took:.1f}s")
+        label = f"{s['repo']} ({sec:.0f}초)"
+        if with_agent and not agent_note.startswith(", 에이전트"):
+            failed += 1  # 에이전트를 원했는데 못 했으면 실패로 센다
+            print(f"✗ {label} — 에이전트 캐시 실패{agent_note}, {took:.1f}s")
             continue
-        print(f"✓ {s['repo']} — {len(scenario['steps'])}단계, {kind}{agent_note}, {took:.1f}s")
-    print(f"{len(samples) - failed}/{len(samples)} 준비됨 → {paths.CACHE}")
+        print(f"✓ {label} — {len(scenario['steps'])}단계, {kind}{agent_note}, {took:.1f}s")
+    print(f"{len(jobs) - failed}/{len(jobs)} 준비됨 → {paths.CACHE}")
     return 1 if failed else 0
 
 

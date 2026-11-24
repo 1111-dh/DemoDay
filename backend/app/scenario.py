@@ -371,4 +371,6 @@ def analyze(
     if prompt:
         (out_dir / "prompt.txt").write_text(prompt)
     (out_dir / "scenario.json").write_text(json.dumps(scenario, ensure_ascii=False, indent=2))
+    # 분석 직후 시나리오 — 캡처가 사용자 수정 여부를 비교해 자동 에이전트 녹화를 정한다
+    (out_dir / "scenario.analyzed.json").write_text(json.dumps(scenario, ensure_ascii=False))
     return scenario

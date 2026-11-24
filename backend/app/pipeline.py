@@ -16,7 +16,8 @@ from app.scene import build_scene
 log = logging.getLogger(__name__)
 
 
-CAPTURE_TIMEOUT = 300  # 단계당 5초 × 최대 7단계 + 브라우저 기동 여유
+CAPTURE_TIMEOUT = 300  # 최소 제한 — 단계가 많으면 단계당 15초씩 늘린다(_capture_timeout)
+SEC_PER_CAPTURE_STEP = 15  # 녹화 1.5초 + 대기 2초 + 커서 0.8초 + 느린 이동·실패 대기 여유
 RENDER_TIMEOUT = 900
 
 
@@ -36,6 +37,7 @@ AGENT_CAPTURE_TIMEOUT = 600  # 에이전트 모드: 최대 10동작 × (판단 +
 
 
 AUTO_AGENT_BELOW = 4  # 코드 분석 시나리오가 이보다 짧으면 에이전트 녹화로 바꾼다
+ANALYZED = "scenario.analyzed.json"  # analyze 직후 시나리오 — 사용자가 고쳤는지 비교한다
 
 
 def use_agent(run_dir: Path) -> bool:
@@ -50,10 +52,24 @@ def use_agent(run_dir: Path) -> bool:
     if not os.environ.get("BAZE_API_KEY"):
         return False
     try:
-        steps = json.loads((run_dir / "scenario.json").read_text())["steps"]
-    except (OSError, ValueError, KeyError, TypeError):
+        now = json.loads((run_dir / "scenario.json").read_text())
+        analyzed = json.loads((run_dir / ANALYZED).read_text())
+    except (OSError, ValueError):
         return False
-    return len(steps) < AUTO_AGENT_BELOW
+    if now.get("auth"):  # 로그인이 필요한 서비스 — 에이전트가 로그인 화면을 녹화하지 않게
+        return False
+    # 사용자가 웹에서 고친 시나리오(단계를 지운 것 포함)는 그대로 녹화한다
+    if now.get("steps") != analyzed.get("steps"):
+        return False
+    return len(analyzed.get("steps") or []) < AUTO_AGENT_BELOW
+
+
+def _capture_timeout(run_dir: Path) -> float:
+    try:
+        n = len(json.loads((run_dir / "scenario.json").read_text())["steps"])
+    except (OSError, ValueError, KeyError, TypeError):
+        n = 0
+    return max(CAPTURE_TIMEOUT, 60 + SEC_PER_CAPTURE_STEP * n)
 
 
 def agent_capture(run_dir: Path) -> tuple[list[str], dict[str, str] | None]:
@@ -88,7 +104,7 @@ def run_capture(run_dir: Path) -> None:
             *extra,
         ],
         "캡처",
-        AGENT_CAPTURE_TIMEOUT if extra else CAPTURE_TIMEOUT,
+        AGENT_CAPTURE_TIMEOUT if extra else _capture_timeout(run_dir),
         env,
     )
 
