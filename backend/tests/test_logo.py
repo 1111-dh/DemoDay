@@ -63,3 +63,14 @@ def test_template_default_title_is_not_a_service_name():
 
     for t in ("React App", "Vite + React + TS", "Create Next App", "Vite App"):
         assert site_name(f"<title>{t}</title>") is None
+
+
+def test_gzip_compressed_icon_is_saved(tmp_path):  # Vercel 은 favicon 을 gzip 으로 준다
+    import gzip
+
+    ico = bytes([0, 0, 1, 0]) + b"x" * 64
+    headers = {"content-type": "image/x-icon", "content-encoding": "gzip"}
+    res = httpx.Response(200, headers=headers, content=gzip.compress(ico))
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: res))
+    out = fetch_logo("https://x.test/", tmp_path, client)
+    assert out is not None and out.read_bytes() == ico

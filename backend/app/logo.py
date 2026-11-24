@@ -93,7 +93,10 @@ def _get_capped(c: httpx.Client, url: str) -> httpx.Response | None:
             body += chunk
             if len(body) > MAX_BYTES:
                 return None
-        return httpx.Response(res.status_code, headers=res.headers, content=body)
+        # 이미 풀린 바이트다 — content-encoding(gzip 등)을 넘기면 httpx 가 한 번 더 풀다 실패해
+        # 압축해서 주는 사이트(Vercel 등)의 로고를 전부 놓쳤다(11/24 우리 사이트 실측)
+        headers = {"content-type": res.headers.get("content-type", "")}
+        return httpx.Response(res.status_code, headers=headers, content=body)
 
 
 _META = re.compile(r"<meta\b[^>]*>", re.I)
