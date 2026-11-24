@@ -93,9 +93,10 @@ def run_dir(tmp_path):
 
 def test_build_scene_writes_file_with_llm_copy(tmp_path):
     run = run_dir(tmp_path)
-    copy = SceneCopy(title="T", subtitle="S", captions=["a", "b"], weights=[1, 1])
+    copy = SceneCopy(title="T", subtitle="S", captions=["a", "b"], weights=[1, 1], mood="calm")
     doc = build_scene(run, 90, True, FakeLLM(copy))
     assert json.loads((run / "scene.json").read_text()) == doc
+    assert (run / "mood.txt").read_text() == "calm"  # 렌더가 public/music/calm.mp3 를 깐다
     assert doc["scenes"][0]["text"] == "T"
     assert doc["totalSec"] == sum(x["durationSec"] for x in doc["scenes"]) <= 90
 
@@ -116,6 +117,7 @@ def test_wrong_caption_count_keeps_copy_and_pads_from_drafts(tmp_path):
 def test_build_scene_without_llm(tmp_path):
     doc = build_scene(run_dir(tmp_path), 60, True, None)
     assert schema_errors("scene", doc) == []
+    assert not (tmp_path / "run" / "mood.txt").exists()  # 렌더 기본값(bright)
 
 
 def _shots(*statuses):
