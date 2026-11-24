@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="web/public/demoday-logo.webp" alt="DemoDay" width="120">
+
 # DemoDay
 
 **시연을 찍지 마세요, 레포를 넣으세요.**
@@ -14,7 +16,7 @@ GitHub 레포와 배포 URL만 넣으면 실제 서비스 화면을 녹화해<br
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
 ![Remotion](https://img.shields.io/badge/Remotion_4-0B84F3?logo=remotion&logoColor=white)
-![Claude](https://img.shields.io/badge/Claude_Haiku_5.5-D97757?logo=anthropic&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude_Sonnet_·_Haiku_5.5-D97757?logo=anthropic&logoColor=white)
 
 [사용법](#사용법) · [주요 기능](#주요-기능) · [동작 방식](#동작-방식) · [기술 스택](#기술-스택) · [직접 실행하기](#직접-실행하기)
 
@@ -35,8 +37,8 @@ GitHub 레포와 배포 URL만 넣으면 실제 서비스 화면을 녹화해<br
 
 1. **프로젝트 입력** — GitHub 저장소 URL과 배포 URL을 넣고 최대 영상 길이를 고릅니다. 처음이라면 **예시로 채우기**를 눌러 보세요.
    - 로그인이 필요한 서비스라면 **테스트 계정 및 제작 요청 (선택)** 을 열어 테스트 계정을 넣습니다. 로그인 값은 영상·로그 어디에도 남지 않아요.
-   - 같은 곳에 "검색 기능을 먼저 보여주세요"처럼 **영상에 바라는 점**을 적을 수 있어요.
-2. **시나리오 확인** — DemoDay가 레포를 분석해 만든 **촬영 순서**가 나옵니다. 순서를 바꾸거나 단계를 빼고 **영상 만들기**를 누릅니다.
+   - 같은 곳에 "검색 기능을 먼저 보여주세요", "잔잔한 분위기로"처럼 **영상에 바라는 점**을 적을 수 있어요. 자막 말투·강조할 기능·배경음악 분위기에 반영돼요.
+2. **시나리오 확인** — DemoDay가 레포를 분석해 만든 **촬영 순서**가 나옵니다. 단계를 길게 눌러 끌어 순서를 바꾸거나 빼고 **영상 만들기**를 누릅니다. 새로고침해도 고친 순서는 남아 있어요.
 3. **영상 미리보기** — 녹화 → 자막 → 렌더링이 진행됩니다(보통 1~3분). 완성되면 바로 재생하고 **MP4로 다운로드**할 수 있어요.
 4. **장면 수정** — 장면 순서·길이·자막을 고치고 **저장하고 다시 렌더링**을 누르면 수정본이 나옵니다.
 
@@ -47,12 +49,13 @@ GitHub 레포와 배포 URL만 넣으면 실제 서비스 화면을 녹화해<br
 
 | | |
 |---|---|
-| **레포 분석 → 시나리오** | 라우트·버튼·입력칸·README를 읽어 시연 순서를 짭니다. React Router · Next.js · Vue Router · Nuxt · SvelteKit · Flutter web 지원 |
-| **실제 화면 녹화** | 헤드리스 브라우저가 배포 URL에서 마우스를 움직여 클릭·입력·스크롤하며 녹화합니다. 로딩 중·로그인 화면은 자동으로 걸러요 |
-| **에이전트 녹화 모드** | AI가 화면을 직접 보고 다음에 누를 곳을 골라 서비스 흐름을 따라갑니다. 고른 동작은 저장해 두고 다음부터 그대로 재생해요 |
+| **레포 분석 → 시나리오** | 라우트·버튼·입력칸·README를 읽어 **핵심 기능 3~5개** 위주로 시연 순서를 짭니다. 단계 수는 영상 길이에 비례해요. React Router · Next.js · Vue Router · Nuxt · SvelteKit · Flutter web 지원 |
+| **실제 화면 녹화** | 헤드리스 브라우저가 배포 URL에서 마우스를 움직여 클릭·입력·스크롤하며 녹화합니다. 로딩 중·로그인 화면은 자동으로 거르고, 배포 사이트가 죽어 있으면 오류 페이지 대신 경고를 띄워요 |
+| **에이전트 녹화 모드** | AI가 화면을 직접 보고 다음에 누를 곳을 골라 서비스 흐름을 따라갑니다. 코드 분석으로 찾은 단계가 적으면 자동으로 켜지고, 고른 동작은 저장해 두고 다음부터 그대로 재생해요 |
 | **화면을 읽는 자막** | 이미지 모델이 녹화 화면을 읽고, 실제로 보이는 내용으로 해요체 자막과 강조어를 씁니다 |
-| **이야기가 있는 구성** | README에서 뽑은 문제 → 해결을 모션 그래픽으로 보여 주고 실제 화면 → 정리로 이어집니다 |
-| **설명하는 곳에 시선을** | 클릭한 곳과 화면의 핵심 영역으로 카메라처럼 다가가는 줌, 부드러운 스크롤 |
+| **이야기가 있는 구성** | 문제 상황 → "하지만 {서비스}를 사용한다면?" → 실제 화면 시연 → **[로고][서비스 이름] "이제, ~하세요"** 엔딩. 문제 상황은 상황마다 다른 가상 화면 모션 그래픽(캘린더 충돌·엑셀 수작업·청구서·오류 페이지 등 11가지)으로 보여 줘요. 로고와 이름은 배포 사이트에서 가져옵니다 |
+| **화면에 맞는 연출** | 클릭한 곳은 클로즈업, 핵심 영역은 3D 기울기, 둘러보는 화면은 넓게 훑기. 단어별로 올라오는 자막과 움직이는 배경 |
+| **분위기에 맞는 배경음악** | 프롬프트의 분위기(밝은·차분한·신나는·감성적인·테크)로 고른 곡을 깔아요. 곡은 코드로 합성해 저작권 걱정이 없어요 |
 | **웹에서 수정·재렌더** | 시나리오 순서, 장면 길이·자막을 고쳐 다시 렌더링 |
 
 ## 동작 방식
@@ -75,8 +78,8 @@ flowchart LR
 | **웹** (`web/`) | Next.js 16 · React 19 · Tailwind CSS 4 · TypeScript |
 | **API · 분석** (`backend/`) | Python 3.12 · FastAPI · Pydantic · httpx · Pillow |
 | **녹화** (`capture/`) | Playwright (Chromium) · tsx |
-| **렌더** (`render/`) | Remotion 4 · React · Pretendard 글꼴 |
-| **AI** | Claude Haiku 5.5 (BAZE API 게이트웨이) — 시나리오·자막·화면 읽기·에이전트, 예비 Groq · Anthropic API |
+| **렌더** (`render/`) | Remotion 4 · React · Pretendard 글꼴 · 코드 합성 배경음악(`scripts/make-music.mjs`) |
+| **AI** | BAZE API 게이트웨이 — Claude Sonnet 5.5(시나리오·자막 글쓰기), Claude Haiku 5.5(화면 읽기·에이전트). 예비 Groq · Anthropic API |
 | **계약** (`contracts/`) | JSON Schema → Python(pydantic)·TypeScript 타입 자동 생성 |
 | **도구** | pnpm 워크스페이스 · uv · Ruff · pytest · Make |
 | **배포** | 웹 Vercel · API 자체 서버 |
@@ -115,11 +118,11 @@ make e2e REPO=https://github.com/nuxt/movies URL=https://movies.nuxt.space
 | 이름 | 필수 | 설명 |
 |---|---|---|
 | `LLM_PROVIDER` | 권장 | `baze`(기본 추천) · `groq` · `anthropic` 중 하나 |
-| `BAZE_API_KEY` | `baze`일 때 | BAZE API 게이트웨이 키. 기본 모델 Claude Haiku 5.5 (`BAZE_MODEL`, `BAZE_VISION_MODEL`, `BAZE_AGENT_MODEL`로 변경) |
+| `BAZE_API_KEY` | `baze`일 때 | BAZE API 게이트웨이 키. 기본 모델은 글쓰기 Claude Sonnet 5.5, 화면 읽기·에이전트 Claude Haiku 5.5 (`BAZE_MODEL`, `BAZE_VISION_MODEL`, `BAZE_AGENT_MODEL`로 변경) |
 | `GROQ_API_KEY` | 선택 | `baze`가 크레딧·장애로 실패하면 예비로 사용 |
 | `ANTHROPIC_API_KEY` | `anthropic`일 때 | Anthropic API 키 |
 | `GITHUB_TOKEN` | 권장 | 없으면 GitHub API가 시간당 60회로 제한돼 분석이 실패할 수 있어요 |
-| `CAPTURE_MODE` | 선택 | `agent`면 에이전트 녹화 모드(느리고 결과가 매번 달라요) |
+| `CAPTURE_MODE` | 선택 | 비우면 코드 분석이 빈약할 때만 에이전트 녹화, `agent`면 항상, `plan`이면 끔(에이전트는 느리고 결과가 매번 달라요) |
 | `DEMODAY_API_URL` | 웹 배포 | 웹 서버가 API로 요청을 넘길 주소(기본 `http://127.0.0.1:8000`) |
 
 </details>
@@ -130,6 +133,7 @@ make e2e REPO=https://github.com/nuxt/movies URL=https://movies.nuxt.space
 ```bash
 make warm          # backend/samples.json의 레포를 미리 분석해 캐시
 make warm AGENT=1  # 에이전트로 한 번 녹화해 고른 동작을 캐시(시연 때는 그대로 재생)
+# 웹에서 고를 수 있는 60·90·180초 길이 모두의 시나리오를 채워요
 ```
 
 웹의 **예시로 채우기**가 `backend/samples.json`을 읽습니다. 같은 레포·URL·프롬프트로 요청하면 캐시에서 바로 나와요.
