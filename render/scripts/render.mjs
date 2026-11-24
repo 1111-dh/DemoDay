@@ -23,7 +23,11 @@ const job = mkdtempSync(join(tmpdir(), "demoday-render-"));
 try {
   const pub = join(job, "public");
   cpSync(join(root, "public/fonts"), join(pub, "fonts"), { recursive: true });
-  if (existsSync(join(root, "public/bgm.mp3"))) cpSync(join(root, "public/bgm.mp3"), join(pub, "bgm.mp3"));
+  // 배경음악: backend 가 고른 분위기(run/mood.txt, 프롬프트 반영) → public/music/<mood>.mp3 (make-music.mjs 로 합성). 없으면 bright
+  const moodFile = resolve(runDir, "mood.txt");
+  const mood = existsSync(moodFile) ? readFileSync(moodFile, "utf8").trim() : "";
+  const music = join(root, "public/music", `${/^[a-z]+$/.test(mood) && existsSync(join(root, "public/music", `${mood}.mp3`)) ? mood : "bright"}.mp3`);
+  if (existsSync(music)) cpSync(music, join(pub, "bgm.mp3"));
   const props = stageRun(runDir, join(pub, "run"));
 
   // 주소창에 보일 도메인(계약 밖 렌더 전용 prop). 호스트만 쓰므로 경로·쿼리의 비밀값은 들어가지 않는다.

@@ -9,6 +9,7 @@ import dataclasses
 import json
 import re
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -66,6 +67,8 @@ class SceneCopy(BaseModel):
     closing: str = ""  # 서비스 가치 한 문장 (없으면 카드 없음)
     problem_sec: float = 0  # 문제 장면 길이(초) — LLM이 상황 무게를 보고 정한다(0이면 기본값)
     solution_sec: float = 0  # 해결 장면 길이(초)
+    # 배경음악 분위기(render/public/music/<mood>.mp3) — 사용자 프롬프트의 분위기, 없으면 서비스 성격
+    mood: Literal["bright", "calm", "upbeat", "warm", "tech"] = "bright"
 
 
 def _clamp(w: float) -> float:
@@ -374,6 +377,9 @@ def build_scene(
             shots, seen = drop_empty(shots, seen)
         user = _user_message(scenario, shots, facts, prompt, seen)
         copy = generate(llm, system=SYSTEM, user=user, output=SceneCopy, check=check)
+    # 렌더가 읽는다(render.mjs). LLM 이 없으면 파일을 안 써서 렌더 기본값(bright)
+    if copy is not None:
+        (run_dir / "mood.txt").write_text(copy.mood)
     doc = assemble(scenario, shots, facts, total_sec, include_architecture, copy, **media)
     if copy is not None and schema_errors("scene", doc):
         doc = assemble(scenario, shots, facts, total_sec, include_architecture, None, **media)
