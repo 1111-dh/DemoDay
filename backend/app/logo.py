@@ -59,6 +59,43 @@ def candidates(html: str, base_url: str) -> list[str]:
     return list(dict.fromkeys(urls))
 
 
+# 템플릿 기본 제목 — 서비스 이름이 아니다(리뷰 #84)
+_DEFAULT_TITLES = re.compile(
+    r"^(react app|vite\b.*|create (next|react) app|next\.?js( app)?|nuxt( app)?|svelte ?kit( app)?|"
+    r"vue( app)?|document|home|index|welcome|untitled|my app|app|title)$",
+    re.I,
+)
+MAX_CANDIDATES = 4
+
+
+def _is_image(data: bytes, ext: str) -> bool:
+    """내용이 정말 이미지인지(매직바이트). SPA는 없는 /favicon.ico 에도 200 text/html 을 준다."""
+    head = data[:512].lstrip()
+    if ext == ".svg":
+        return b"<svg" in head[:512].lower() or (
+            head.startswith(b"<?xml") and b"<svg" in data[:2048].lower()
+        )
+    return (
+        data.startswith(b"\x89PNG")
+        or data.startswith(b"\x00\x00\x01\x00")  # ICO
+        or data.startswith(b"\xff\xd8")  # JPEG
+        or (data.startswith(b"RIFF") and data[8:12] == b"WEBP")
+    )
+
+
+def _get_capped(c: httpx.Client, url: str) -> httpx.Response | None:
+    """MAX_BYTES 까지만 받는다 — 큰 파일은 받는 도중에 끊는다."""
+    with c.stream("GET", url) as res:
+        if int(res.headers.get("content-length") or 0) > MAX_BYTES:
+            return None
+        body = b""
+        for chunk in res.iter_bytes():
+            body += chunk
+            if len(body) > MAX_BYTES:
+                return None
+        return httpx.Response(res.status_code, headers=res.headers, content=body)
+
+
 _META = re.compile(r"<meta\b[^>]*>", re.I)
 _TITLE = re.compile(r"<title[^>]*>([^<]+)</title>", re.I)
 _SEP = re.compile(r"\s+[|·\-–—:]\s+")
@@ -78,12 +115,13 @@ def site_name(html: str) -> str | None:
         if key and a.get("content"):
             metas.setdefault(key, a["content"].strip())
     for key in ("og:site_name", "application-name", "apple-mobile-web-app-title"):
-        if 0 < len(metas.get(key, "")) <= MAX_NAME:
-            return metas[key]
+        value = metas.get(key, "")
+        if 0 < len(value) <= MAX_NAME and not _DEFAULT_TITLES.match(value):
+            return value
     if m := _TITLE.search(html):
         parts = [x.strip() for x in _SEP.split(m.group(1).strip()) if x.strip()]
         name = min(parts, key=len) if parts else ""
-        if 0 < len(name) <= MAX_NAME:
+        if 0 < len(name) <= MAX_NAME and not _DEFAULT_TITLES.match(name):
             return name
     return None
 
@@ -102,16 +140,16 @@ def fetch_logo(base_url: str, run_dir: Path, client: httpx.Client | None = None)
             html = ""
         if name := site_name(html):
             (run_dir / "site_name.txt").write_text(name)
-        for url in candidates(html, base_url):
+        for url in candidates(html, base_url)[:MAX_CANDIDATES]:
             try:
-                res = c.get(url)
+                res = _get_capped(c, url)
             except httpx.HTTPError:
+                continue
+            if res is None or res.status_code != 200:
                 continue
             kind = res.headers.get("content-type", "").split(";")[0].strip().lower()
             ext = _TYPES.get(kind) or Path(url.split("?")[0]).suffix.lower()
-            if res.status_code != 200 or ext not in _TYPES.values() or not res.content:
-                continue
-            if len(res.content) > MAX_BYTES:
+            if ext not in _TYPES.values() or not _is_image(res.content, ext):
                 continue
             for old in run_dir.glob("logo.*"):
                 old.unlink()

@@ -1,9 +1,20 @@
+import { useState } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { TitleScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
 import { Backdrop, fitFont, Pill, Words } from "../motion";
 
 type Props = { scene: T; durationInFrames: number; logo?: string };
+
+/**
+ * 로고 이미지. 못 읽으면(깨진 파일·HTML) 렌더를 멈추지 않고 fallback 을 그린다 —
+ * Img 는 onError 가 없으면 재시도 뒤 렌더 전체를 취소한다(리뷰 #84).
+ */
+const LogoImg: React.FC<{ src: string; size: number; fallback?: React.ReactNode }> = ({ src, size, fallback = null }) => {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <>{fallback}</>;
+  return <Img src={staticFile(src)} maxRetries={0} onError={() => setBroken(true)} style={{ width: size, height: size, objectFit: "contain" }} />;
+};
 
 /** 서비스 로고 배지: 흰 둥근 사각형 안에 로고, 튀어 오르며 나타난다 */
 const Logo: React.FC<{ src: string; size: number; delay?: number }> = ({ src, size, delay = 0 }) => {
@@ -25,7 +36,7 @@ const Logo: React.FC<{ src: string; size: number; delay?: number }> = ({ src, si
         opacity: interpolate(p, [0, 0.3], [0, 1], clamp),
       }}
     >
-      <Img src={staticFile(src)} style={{ width: size * 0.7, height: size * 0.7, objectFit: "contain" }} />
+      <LogoImg src={src} size={size * 0.7} />
     </div>
   );
 };
@@ -83,7 +94,7 @@ const Rings: React.FC<{ letter: string; logo?: string }> = ({ letter, logo }) =>
           transform: `scale(${badge}) rotate(${interpolate(badge, [0, 1], [-20, 0])}deg)`,
         }}
       >
-        {logo ? <Img src={staticFile(logo)} style={{ width: 110, height: 110, objectFit: "contain" }} /> : letter}
+        {logo ? <LogoImg src={logo} size={110} fallback={letter} /> : letter}
       </div>
     </div>
   );
