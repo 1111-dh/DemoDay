@@ -33,6 +33,12 @@ try {
       props.domain = new URL(JSON.parse(readFileSync(scenarioPath, "utf8")).baseUrl).host;
     } catch {}
   }
+  // 서비스 로고(계약 밖 렌더 전용 prop): backend 가 run 에 받아 둔 logo.* — 연결·마무리 장면에 넣는다
+  const logo = ["png", "svg", "webp", "jpg", "ico"].map((e) => `logo.${e}`).find((f) => existsSync(resolve(runDir, f)));
+  if (logo) {
+    cpSync(resolve(runDir, logo), join(pub, "run", logo));
+    props.logo = `run/${logo}`;
+  }
   const propsPath = join(job, "props.json"); // public 밖 — 정적 파일로 노출하지 않는다
   writeFileSync(propsPath, JSON.stringify(props));
   // pnpm 대신 node로 CLI를 직접 실행한다(Windows에서 pnpm은 .cmd라 execFileSync로 못 띄운다)

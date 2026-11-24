@@ -91,7 +91,12 @@ def create_run(body: CreateRun) -> dict:
     rid = runs.new_run()
     try:
         sc = scenario.analyze(
-            body.repo, body.url, runs.run_dir(rid), llm.get_llm(), prompt=body.prompt
+            body.repo,
+            body.url,
+            runs.run_dir(rid),
+            llm.get_llm(),
+            prompt=body.prompt,
+            total_sec=body.totalSec,
         )
     except RepoError as e:
         runs.write_status(rid, stage="error", error=str(e))

@@ -526,3 +526,12 @@ def test_steps_after_a_dropped_goto_are_dropped():  # 빠진 화면용 스크롤
         ("goto", "/about", "소개"),
         ("scroll", None, "소개 아래"),
     ]
+
+
+def test_step_limit_follows_requested_length():
+    from app.scenario import step_limit
+
+    assert step_limit(None) == 12
+    assert step_limit(30) == 6  # 최소
+    assert (step_limit(60), step_limit(120), step_limit(180)) == (6, 12, 18)
+    assert step_limit(600) == 18  # 안전 상한

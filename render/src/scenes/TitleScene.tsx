@@ -1,14 +1,50 @@
-import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { useState } from "react";
+import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { TitleScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
 import { Backdrop, fitFont, Pill, Words } from "../motion";
 
-type Props = { scene: T; durationInFrames: number };
+type Props = { scene: T; durationInFrames: number; logo?: string };
+
+/**
+ * 로고 이미지. 못 읽으면(깨진 파일·HTML) 렌더를 멈추지 않고 fallback 을 그린다 —
+ * Img 는 onError 가 없으면 재시도 뒤 렌더 전체를 취소한다(리뷰 #84).
+ */
+const LogoImg: React.FC<{ src: string; size: number; fallback?: React.ReactNode }> = ({ src, size, fallback = null }) => {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <>{fallback}</>;
+  return <Img src={staticFile(src)} maxRetries={0} onError={() => setBroken(true)} style={{ width: size, height: size, objectFit: "contain" }} />;
+};
+
+/** 서비스 로고 배지: 흰 둥근 사각형 안에 로고, 튀어 오르며 나타난다 */
+const Logo: React.FC<{ src: string; size: number; delay?: number }> = ({ src, size, delay = 0 }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const p = spring({ frame, fps, delay: delay * fps, config: { damping: 12 } });
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size * 0.26,
+        background: "white",
+        boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transform: `scale(${p}) rotate(${interpolate(p, [0, 1], [-12, 0])}deg)`,
+        opacity: interpolate(p, [0, 0.3], [0, 1], clamp),
+      }}
+    >
+      <LogoImg src={src} size={size * 0.7} />
+    </div>
+  );
+};
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 /** 오른쪽 장식: 선이 그려지며 도는 동심원 호 + 가운데 이니셜 배지. */
-const Rings: React.FC<{ letter: string }> = ({ letter }) => {
+const Rings: React.FC<{ letter: string; logo?: string }> = ({ letter, logo }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const draw = (delay: number) => interpolate(frame, [delay * fps, (delay + 1.2) * fps], [1, 0], { ...clamp, easing: Easing.out(Easing.cubic) });
@@ -47,7 +83,7 @@ const Rings: React.FC<{ letter: string }> = ({ letter }) => {
           width: 160,
           height: 160,
           borderRadius: 44,
-          background: `linear-gradient(135deg, ${theme.accent}, #ff9a52)`,
+          background: logo ? "white" : `linear-gradient(135deg, ${theme.accent}, #ff9a52)`,
           boxShadow: "0 24px 60px rgba(242,107,29,0.35)",
           display: "flex",
           alignItems: "center",
@@ -58,7 +94,7 @@ const Rings: React.FC<{ letter: string }> = ({ letter }) => {
           transform: `scale(${badge}) rotate(${interpolate(badge, [0, 1], [-20, 0])}deg)`,
         }}
       >
-        {letter}
+        {logo ? <LogoImg src={logo} size={110} fallback={letter} /> : letter}
       </div>
     </div>
   );
@@ -69,7 +105,7 @@ const Rings: React.FC<{ letter: string }> = ({ letter }) => {
  * kicker가 있으면 장 구분 카드(문제·정리): 라벨 알약 + 큰 문장 + 밑줄이 그어진다.
  * 장면 내내 아주 천천히 다가가 정지 화면처럼 보이지 않게 한다.
  */
-export const TitleScene: React.FC<Props> = ({ scene, durationInFrames }) => {
+export const TitleScene: React.FC<Props> = ({ scene, durationInFrames, logo }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const chapter = Boolean(scene.kicker);
@@ -93,6 +129,11 @@ export const TitleScene: React.FC<Props> = ({ scene, durationInFrames }) => {
       <AbsoluteFill style={{ transform: `scale(${drift})`, transformOrigin: "30% 50%" }}>
         {chapter ? (
           <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 140px", textAlign: "center" }}>
+            {logo && !problem && (
+              <div style={{ marginBottom: 30 }}>
+                <Logo src={logo} size={scene.kicker === "정리" ? 132 : 112} />
+              </div>
+            )}
             <Pill text={scene.kicker ?? ""} color={color} light={problem} />
             <div style={{ position: "relative", marginTop: 34 }}>
               <Words text={scene.text} delay={0.2} style={{ fontSize: fitFont(scene.text, 960, 70), fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.22, justifyContent: "center", maxWidth: 1000 }} />
@@ -114,7 +155,7 @@ export const TitleScene: React.FC<Props> = ({ scene, durationInFrames }) => {
             {scene.subtitle && (
               <Words text={scene.subtitle} delay={0.6} stagger={0.05} style={{ fontSize: 32, fontWeight: 500, color: theme.sub, marginTop: 30, maxWidth: 600, lineHeight: 1.4 }} />
             )}
-            {roomy && <Rings letter={[...scene.text.trim()][0] ?? "D"} />}
+            {roomy && <Rings letter={[...scene.text.trim()][0] ?? "D"} logo={logo} />}
           </AbsoluteFill>
         )}
       </AbsoluteFill>

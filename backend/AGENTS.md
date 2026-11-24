@@ -12,7 +12,7 @@
 
 ## LLM 출력 규칙
 - LLM은 **scenario.json / scene.json만** 만든다. structured output(JSON schema)을 쓴다. 예외: 에이전트 녹화 모드(`CAPTURE_MODE=agent`, #53)에서는 `app/agent.py`가 화면을 보고 **다음 동작**(click·type·scroll·done)을 고른다. 실제로 한 동작은 캡처가 scenario.json으로 남기고 scene·render는 그대로 쓴다. 위험한 요소(로그아웃·삭제·결제)는 후보에서 빼고, 같은 요소는 두 번 누르지 않는다.
-- 공급자는 `.env`의 `LLM_PROVIDER`: **`baze`(기본 추천, 학교 BAZE 게이트웨이 — `BAZE_API_KEY`, 월 5,000크레딧 무료, 모델 `claude-haiku-5-5`(`BAZE_MODEL`), 영상 1개 ≈ 4크레딧)**, `groq`(무료 플랜, `GROQ_API_KEY`, 기본 모델 `openai/gpt-oss-120b`, `GROQ_MODEL`로 변경. 하루 한도(TPD 20만)를 다 쓰면 기다리지 않고 `GROQ_FALLBACK_MODEL`(기본 `qwen/qwen3.8-27b`, 빈 값이면 끔)로 바꾼다) 또는 `anthropic`(`ANTHROPIC_API_KEY`). 비어 있으면 키가 있는 쪽(BAZE → Groq). BAZE가 크레딧·인증·서버 오류로 내려가면 Groq 키가 있을 때 Groq로 넘어간다(`FallbackLLM`). BAZE는 strict JSON schema(`additionalProperties: false`, 모든 필드 required)를 요구한다. 키가 없으면 규칙 기반 기본값만 쓴다. 구현은 `app/llm.py`의 `get_llm()`.
+- 공급자는 `.env`의 `LLM_PROVIDER`: **`baze`(기본 추천, 학교 BAZE 게이트웨이 — `BAZE_API_KEY`, 월 5,000크레딧 무료, 시나리오·자막 글쓰기는 `claude-sonnet-5-5`(`BAZE_MODEL`로 변경, Haiku의 약 20배 단가), 화면 읽기·에이전트는 `claude-haiku-5-5`, 영상 1개 ≈ 4크레딧)**, `groq`(무료 플랜, `GROQ_API_KEY`, 기본 모델 `openai/gpt-oss-120b`, `GROQ_MODEL`로 변경. 하루 한도(TPD 20만)를 다 쓰면 기다리지 않고 `GROQ_FALLBACK_MODEL`(기본 `qwen/qwen3.8-27b`, 빈 값이면 끔)로 바꾼다) 또는 `anthropic`(`ANTHROPIC_API_KEY`). 비어 있으면 키가 있는 쪽(BAZE → Groq). BAZE가 크레딧·인증·서버 오류로 내려가면 Groq 키가 있을 때 Groq로 넘어간다(`FallbackLLM`). BAZE는 strict JSON schema(`additionalProperties: false`, 모든 필드 required)를 요구한다. 키가 없으면 규칙 기반 기본값만 쓴다. 구현은 `app/llm.py`의 `get_llm()`.
 - scene 자막 전에 캡처 스크린샷을 이미지 모델(BAZE면 `BAZE_VISION_MODEL` 기본 `claude-haiku-5-5` → 예비 Groq `GROQ_VISION_MODEL` 기본 `qwen/qwen3.8-27b`, 빈 값이면 끔)로 읽어 화면별 `seen`(실제로 보이는 내용)을 scene LLM에 넣는다(`app/vision.py`). Groq가 이미지 1장을 약 2,000토큰으로 잡아서(분당 7,000) 4장씩 2x2로 붙여 요청 1번에 보낸다. 실패하면 `seen` 없이 예전처럼 자막을 쓴다.
 - 결과는 반드시 `schema_errors(kind, data)`로 검증한다. pydantic 모델은 if/then 조건(goto→path 등)을 확인하지 못한다.
 - 위반이 있으면 에러 목록을 프롬프트에 붙여 재시도(최대 2회)하고, 그래도 실패하면 규칙 기반 기본값을 쓴다.
@@ -32,7 +32,8 @@
 | GET | `/api/runs/{id}/files/{path}` | — | run 디렉터리 파일(`shots/2.png`, `preview.mp4`). 밖 경로·없는 파일 → 404 |
 
 - `stage`: `created` → `analyzed` → (`queued` → `capturing` → `scening` → `rendering` → `done`) / 실패 시 `error` + `error` 메시지. 웹은 `done`·`error`가 될 때까지 `GET /api/runs/{id}`를 폴링한다(1~2초).
-- 영상 길이: `totalSec`은 **최대 길이**다. scene 은 장면마다 내용만큼 길이를 잡는다(제목 4.5초, 카드는 글자 수로 3~5초, 모션 그래픽 3초+항목당 1초, 화면은 녹화 구간 길이지만 최소 4.5초). 내용이 요청보다 짧으면 녹화가 있는 화면 장면만 장면당 7초까지 늘린다(`fill`, 카드는 그대로). `scene.totalSec = min(요청, 내용 합)`. 시나리오는 8~10단계(최대 12).
+- 영상 흐름(11/24): 문제 장면 → 연결 카드 "하지만 {서비스}를 사용한다면?"(`bridge`) → 시연 화면 → 마무리(closing: "{서비스}가 {문제}를 해결해요"). 문제를 못 찾으면 제목 슬라이드로 연다. 해결 카드는 만들지 않는다(시연이 해결). build/`cli scene` 전에 배포 사이트 로고를 run의 `logo.*`로 받는다(`app/logo.py`, 실패해도 계속).
+- 영상 길이: `totalSec`은 **최대 길이**다. scene 은 장면마다 내용만큼 길이를 잡는다(제목 4.5초, 카드는 글자 수로 3~5초, 화면은 녹화 구간 길이지만 최소 4.5초). 내용이 요청보다 짧으면 녹화가 있는 화면 장면만 장면당 7초까지 늘린다(`fill`, 카드는 그대로). `scene.totalSec = min(요청, 내용 합)`. 시나리오는 핵심 기능 3~5개만(기능당 1~3단계), 단계 수 상한은 요청 길이에 비례한다(`step_limit`: 10초에 1단계, 6~18, 캐시 키에 들어감 — `make warm`은 60·90·180초). 문제·해결 장면 길이는 scene LLM이 `problem_sec`·`solution_sec`로 정하고 코드가 항목 수에 맞는 범위로 자른다(문제 1.4+2.4~4.5초/상황, 해결 3+0.8~2초/항목). 문제 항목 text는 사람이 겪는 상황 문장(22자 이내)이고 렌더가 가상 인터넷 화면으로 그린다.
 - 캡처가 통째로 실패하면(사이트 응답 없음 등) 빈 capture.json으로 계속해 화면 없이(제목·문제·해결·정리 카드) 영상을 만들고 `stage: "done"` + `warning` 메시지를 남긴다. 다음 build 때 지워진다.
 - scene 안의 이미지 경로(`shots/2.png`)는 `/api/runs/{id}/files/` 뒤에 붙여 쓴다. 없는 run id → 404.
 - `auth`(캡처 전 로그인, `{steps: Step[]}`)는 run 디렉터리의 scenario.json에만 실제 값으로 저장하고 LLM·캐시에는 넣지 않는다. 응답의 scenario에서는 `value`와 경로의 쿼리가 `***`로 가려진다. 가린 채로 `PUT /scenario`하면 저장된 값을 유지하고, 바꾸려면 새 값을 보낸다. CLI·e2e는 `--auth <file>` / `make e2e … AUTH=<file>`.

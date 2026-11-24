@@ -276,7 +276,10 @@ export async function* agentSteps(o: AgentOptions, executed: Step[]): AsyncGener
         // 다른 사이트로 나가면 되돌린다 — 영상은 이 서비스만 보여준다
         await o.page.goBack({ timeout: 5000 }).catch(() => {});
       }
-      if (LOGIN_PATH.test(new URL(o.page.url()).pathname)) {
+      // 로그인 화면(경로·해시 라우터 /#/login·비밀번호 입력칸)이면 멈춘다 — 입력값이 보이는 로그인 장면은 범위 밖
+      const here = new URL(o.page.url());
+      const password = await o.page.locator("input[type=password]").count().catch(() => 0);
+      if (LOGIN_PATH.test(here.pathname + here.hash) || password > 0) {
         console.warn("! 에이전트: 로그인 화면 — 종료");
         break;
       }

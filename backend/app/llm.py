@@ -151,7 +151,10 @@ GROQ_FALLBACK = "qwen/qwen3.8-27b"
 # 가장 쌌다(영상 1개 ≈ 4cr)
 BAZE_BASE_URL = "https://api.baze.co/v1/gateway"
 BAZE_CHAT_PATH = "/chat/completions/"  # 끝 / 없으면 리다이렉트
-BAZE_MODEL = "claude-haiku-5-5"
+BAZE_MODEL = "claude-haiku-5-5"  # 화면 읽기·에이전트(호출이 많다)
+# 시나리오·자막 글쓰기(영상당 2~3번) — 문장·기능 선택 품질이 영상에 보인다(11/24).
+# Haiku의 약 20배 단가
+BAZE_TEXT_MODEL = "claude-sonnet-5-5"
 
 
 class OpenAICompatLLM:
@@ -287,7 +290,7 @@ def get_llm() -> LLM | None:
         baze = OpenAICompatLLM(
             base_url=BAZE_BASE_URL,
             api_key=baze_key,
-            model=os.environ.get("BAZE_MODEL", BAZE_MODEL),
+            model=os.environ.get("BAZE_MODEL", BAZE_TEXT_MODEL),
             chat_path=BAZE_CHAT_PATH,
             strict=True,
         )

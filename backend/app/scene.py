@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -39,7 +40,12 @@ SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 
 MAX_POINT = 16  # points 항목 — 모션 그래픽용 짧은 키워드(프롬프트는 12자, 여유 4자)
-POINTS_BASE, POINT_SEC = 3.0, 1.0  # points 장면 길이: 3초 + 항목당 1초
+MAX_SITUATION = 22  # 문제 항목 — 사람이 겪는 상황 한 문장(프롬프트는 18자, 여유 4자)
+# 해결 장면 기본: 3초 + 항목당 1초 / 문제 장면 기본: 제목 1.4초 + 상황당 3초 (render ProblemStory)
+POINTS_BASE, POINT_SEC = 3.0, 1.0
+STORY_BASE, STORY_SEC = 1.4, 3.0
+# LLM이 problem_sec·solution_sec로 정하는 길이의 항목당 범위(초)
+STORY_RANGE, POINTS_RANGE = (2.4, 4.5), (0.8, 2.0)
 
 
 class PointDraft(BaseModel):
@@ -58,6 +64,8 @@ class SceneCopy(BaseModel):
     solution: str = ""  # 해결 한 줄 제목
     solution_points: list[PointDraft] = []  # 핵심 기능 2~4개 → points 장면 (없으면 생략)
     closing: str = ""  # 서비스 가치 한 문장 (없으면 카드 없음)
+    problem_sec: float = 0  # 문제 장면 길이(초) — LLM이 상황 무게를 보고 정한다(0이면 기본값)
+    solution_sec: float = 0  # 해결 장면 길이(초)
 
 
 def _clamp(w: float) -> float:
@@ -73,12 +81,20 @@ def keep_shots(shots: list[dict]) -> list[dict]:
     return ok or shots[:1]
 
 
-def _points(heading: str, points: list[PointDraft], kicker: str) -> dict | None:
-    """문제·해결 아이콘 카드 장면. 항목이 2개 미만이면 None (호출부가 카드로 대신)."""
+def _points(heading: str, points: list[PointDraft], kicker: str, want: float = 0) -> dict | None:
+    """문제·해결 장면. 항목이 2개 미만이면 None (호출부가 카드로 대신).
+
+    want(초)는 LLM이 내용을 보고 정한 길이 — 항목 수에 맞는 범위로 자르고, 0이면 기본값.
+    """
     items = [{"icon": str(p.icon), "text": p.text.strip()} for p in points if p.text.strip()][:4]
     if len(items) < 2:
         return None
-    sec = POINTS_BASE + POINT_SEC * len(items)
+    problem = kicker == "문제"
+    base, each = (STORY_BASE, STORY_SEC) if problem else (POINTS_BASE, POINT_SEC)
+    lo, hi = STORY_RANGE if problem else POINTS_RANGE
+    n = len(items)
+    least, most = base + lo * n, base + hi * n
+    sec = round(min(most, max(least, want)) if want > 0 else base + each * n, 2)
     return {
         "type": "points",
         "durationSec": sec,
@@ -86,6 +102,24 @@ def _points(heading: str, points: list[PointDraft], kicker: str) -> dict | None:
         "heading": heading.strip(),
         "items": items,
     }
+
+
+BRIDGE_SEC = 3.2  # "하지만 …을 사용한다면?" — 문제에서 시연으로 넘어가는 한 박자
+BRIDGE_KICKER = "하지만"
+
+
+def _object_particle(name: str) -> str:
+    """이름 뒤 목적격 조사: 받침 있는 한글로 끝나면 '을', 아니면 '를'(영문 이름 포함)."""
+    last = name.strip()[-1:] or "x"
+    if "가" <= last <= "힣":
+        return "을" if (ord(last) - 0xAC00) % 28 else "를"
+    return "를"
+
+
+def bridge(name: str) -> dict:
+    name = name.strip()
+    text = f"{name}{_object_particle(name)} 사용한다면?"
+    return {"type": "title", "durationSec": BRIDGE_SEC, "kicker": BRIDGE_KICKER, "text": text}
 
 
 def _read_sec(text: str) -> float:
@@ -131,6 +165,7 @@ def assemble(
     *,
     video: str | None = None,
     login_images: list[str] | None = None,
+    service_name: str | None = None,
 ) -> dict:
     """video = capture.video (녹화 파일), login_images = capture.login.images (입력칸 가림)."""
     step_caption = {s["id"]: s.get("caption", "") for s in scenario["steps"]}
@@ -138,17 +173,17 @@ def assemble(
     subtitle = copy.subtitle if copy else facts.summary
     if subtitle:
         title["subtitle"] = subtitle
-    scenes: list[dict] = [title]
+    # 영상 흐름(11/24): 문제 상황 → "하지만 {서비스}를 사용한다면?" → 시연
+    # → {서비스}가 문제를 해결한다는 마무리.
+    # 제목 슬라이드는 문제를 못 찾았을 때만 연다. 해결은 카드 대신 시연으로 바로 보여 준다.
+    scenes: list[dict] = []
     if copy and copy.problem.strip():
-        problem = _points(copy.problem, copy.problem_points, "문제")
+        problem = _points(copy.problem, copy.problem_points, "문제", copy.problem_sec)
         scenes.append(problem or _card(copy.problem.strip(), "문제"))
-    if (
-        copy
-        and copy.solution.strip()
-        and (solution := _points(copy.solution, copy.solution_points, "해결"))
-    ):
-        scenes.append(solution)
-    for j, image in enumerate(login_images or []):  # 문제 → (로그인) → 해결 화면
+        scenes.append(bridge(service_name or title["text"]))
+    else:
+        scenes.append(title)
+    for j, image in enumerate(login_images or []):  # 문제 → 연결 → (로그인) → 시연
         login: dict = {"type": "screen", "durationSec": LOGIN_SEC, "image": image}
         if j == len(login_images) - 1:
             login["caption"] = LOGIN_CAPTION
@@ -292,7 +327,16 @@ def build_scene(
     prompt = prompt_file.read_text() if prompt_file.exists() else None
     shots = keep_shots(capture["shots"])
     login = capture.get("login") or {}
-    media = {"video": capture.get("video"), "login_images": login.get("images")}
+    # 배포 사이트가 밝힌 서비스 이름(app/logo.py) — README 첫 제목은 슬로건인 경우가 많다
+    name_file = run_dir / "site_name.txt"
+    site = name_file.read_text().strip() if name_file.exists() else ""
+    if site:
+        facts = dataclasses.replace(facts, name=site)
+    media = {
+        "video": capture.get("video"),
+        "login_images": login.get("images"),
+        "service_name": site or None,
+    }
 
     def check(c: SceneCopy) -> list[str]:
         errors = []
@@ -305,12 +349,12 @@ def build_scene(
             errors.append(f"weights는 {W_MIN}~{W_MAX}")
         if max(len(c.problem), len(c.closing), len(c.solution)) > MAX_CARD:
             errors.append(f"problem·solution·closing은 {MAX_CARD}자 이하")
-        for name, pts in (
-            ("problem_points", c.problem_points),
-            ("solution_points", c.solution_points),
+        for name, pts, most in (
+            ("problem_points", c.problem_points, MAX_SITUATION),
+            ("solution_points", c.solution_points, MAX_POINT),
         ):
-            if len(pts) > 4 or any(len(p.text) > MAX_POINT for p in pts):
-                errors.append(f"{name}는 4개 이하, 항목당 {MAX_POINT}자 이하")
+            if len(pts) > 4 or any(len(p.text) > most for p in pts):
+                errors.append(f"{name}는 4개 이하, 항목당 {most}자 이하")
         return errors
 
     copy = None

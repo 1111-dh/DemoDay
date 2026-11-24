@@ -2,6 +2,7 @@ import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoCon
 import type { PointsScene as T } from "@demoday/contracts";
 import { theme } from "../theme";
 import { Backdrop, fitFont, Pill, Words } from "../motion";
+import { ProblemStory } from "./ProblemStory";
 
 type Props = { scene: T; durationInFrames: number };
 type IconName = T["items"][number]["icon"];
@@ -66,7 +67,11 @@ const Stamp: React.FC<{ p: number; bg: string; mark: "x" | "check" }> = ({ p, bg
  * - "문제": 어두운 배경. 카드가 떨어지듯 들어와 흔들리고, 빨간 ✕가 찍히며 키워드에 취소선이 그어진다
  * - 그 외("해결"): 밝은 배경. 카드가 차례로 솟아오르고, 뒤로 주황 선이 이어지며 ✓가 찍히고 빛이 훑고 지나간다
  */
-export const PointsScene: React.FC<Props> = ({ scene, durationInFrames }) => {
+export const PointsScene: React.FC<Props> = (props) =>
+  props.scene.kicker === "문제" ? <ProblemStory scene={props.scene} durationInFrames={props.durationInFrames} /> : <SolutionCards {...props} />;
+
+/** 해결 카드 장면(문제 장면은 ProblemStory가 가상 인터넷 화면으로 그린다). */
+const SolutionCards: React.FC<Props> = ({ scene, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = (sec: number) => sec * fps;
@@ -80,7 +85,9 @@ export const PointsScene: React.FC<Props> = ({ scene, durationInFrames }) => {
   const color = problem ? theme.red : theme.accent;
   const settle = 0.5 + 0.14 * n; // 카드가 다 들어오는 시각
   const line = interpolate(frame, [t(settle), t(settle + 0.6)], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
-  const sweepX = interpolate(frame, [t(settle + 1.0), t(settle + 2.0)], [left0 - 200, left0 + rowW + 200], clamp);
+  // 빛은 카드가 다 뜬 뒤 2.6초마다 다시 훑는다 — 장면이 길어져도 멈춰 보이지 않게
+  const cycle = Math.max(0, frame - t(settle + 1.0)) % t(2.6);
+  const sweepX = frame < t(settle + 1.0) ? left0 - 200 : interpolate(cycle, [0, t(1.0)], [left0 - 200, left0 + rowW + 200], clamp);
   const drift = interpolate(frame, [0, durationInFrames], [1, 1.035]);
 
   return (

@@ -22,11 +22,13 @@ from app.contracts import schema_errors
 from app.github import RepoSnapshot, fetch_repo
 from app.llm import LLM, generate
 
-MAX_STEPS = 12  # 영상이 너무 짧다는 피드백(11/24) — 기능을 더 보여준다
+MAX_STEPS = 18  # 안전 상한 — 실제 상한은 요청 길이에 비례(step_limit)
+DEFAULT_STEPS = 12  # 길이를 모를 때(CLI·테스트)
+SEC_PER_STEP = 10  # 핵심 기능만 — 26단계는 '모든 기능을 다 보여 주는' 느낌(11/24 피드백)
 MAX_SCROLLS = 2  # 같은 화면에서 이어지는 스크롤 (긴 랜딩 페이지)
 MAX_PROMPT = 500
 README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
-SCENARIO_VERSION = 13  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 15  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -161,7 +163,9 @@ def _caption_for(path: str) -> str:
     return f"{path.rstrip('/').rsplit('/', 1)[-1]} 페이지"
 
 
-def _ground(draft: ScenarioDraft, facts: RepoFacts) -> tuple[list[dict], list[str]]:
+def _ground(
+    draft: ScenarioDraft, facts: RepoFacts, limit: int = DEFAULT_STEPS
+) -> tuple[list[dict], list[str]]:
     pages = _static_pages(facts)
     click_only = _click_only_pages(facts)
     steps: list[dict] = []
@@ -216,12 +220,22 @@ def _ground(draft: ScenarioDraft, facts: RepoFacts) -> tuple[list[dict], list[st
             )
         else:
             steps.append({"action": "click", "selector": s.selector, "caption": caption})
-    steps = steps[:MAX_STEPS]
+    steps = steps[:limit]
     return [{"id": i, **s} for i, s in enumerate(steps, start=1)], dropped
 
 
-def ground(draft: ScenarioDraft, facts: RepoFacts) -> list[dict]:
-    return _ground(draft, facts)[0]
+def ground(draft: ScenarioDraft, facts: RepoFacts, limit: int = DEFAULT_STEPS) -> list[dict]:
+    return _ground(draft, facts, limit)[0]
+
+
+def step_limit(total_sec: float | None) -> int:
+    """요청 영상 길이에 맞는 최대 단계 수: 10초에 1단계(최소 6, 최대 MAX_STEPS).
+
+    고정 상한 대신(11/24) — 길이보다 단계가 많으면 렌더가 장면을 압축해 빨라진다.
+    """
+    if not total_sec:
+        return DEFAULT_STEPS
+    return max(6, min(MAX_STEPS, int(total_sec // SEC_PER_STEP)))
 
 
 def _base(base_url: str) -> str:
@@ -243,7 +257,7 @@ def _min_steps(facts: RepoFacts) -> int:
     return max(1, min(MIN_STEPS, possible))
 
 
-def _user_message(facts: RepoFacts, prompt: str | None = None) -> str:
+def _user_message(facts: RepoFacts, prompt: str | None = None, limit: int = DEFAULT_STEPS) -> str:
     """LLM 입력은 작게 — 무료 플랜 분당 토큰 한도(Groq 8000)를 넘으면 413 으로 거절된다.
 
     파일 경로·의존성 목록은 빼고, 요소는 셀렉터 문자열만, JSON 은 공백 없이.
@@ -264,17 +278,23 @@ def _user_message(facts: RepoFacts, prompt: str | None = None) -> str:
         "pages": pages,
     }
     user = "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    user += f"\n\n최대 {limit}단계 — 핵심 기능만 골라 보여 준다"
+    user += "(단순 이동·되돌리기·같은 화면 반복 금지)."
     return with_reference(user, prompt, "화면 순서와 보여줄 기능에만 반영한다")
 
 
 def scenario_from_llm(
-    facts: RepoFacts, base_url: str, llm: LLM, prompt: str | None = None
+    facts: RepoFacts,
+    base_url: str,
+    llm: LLM,
+    prompt: str | None = None,
+    limit: int = DEFAULT_STEPS,
 ) -> dict | None:
     facts = without_excluded(facts, prompt)
     need = _min_steps(facts)
 
     def check(draft: ScenarioDraft) -> list[str]:
-        steps, dropped = _ground(draft, facts)
+        steps, dropped = _ground(draft, facts, limit)
         problems = schema_errors("scenario", {"baseUrl": _base(base_url), "steps": steps})
         if len(steps) < need:
             problems.append(f"유효한 단계가 {len(steps)}개뿐 — {need}개 이상 필요")
@@ -283,13 +303,13 @@ def scenario_from_llm(
     draft = generate(
         llm,
         system=SYSTEM,
-        user=_user_message(facts, normalize_prompt(prompt)),
+        user=_user_message(facts, normalize_prompt(prompt), limit),
         output=ScenarioDraft,
         check=check,
     )
     if draft is None:
         return None
-    return {"baseUrl": _base(base_url), "steps": ground(draft, facts)}
+    return {"baseUrl": _base(base_url), "steps": ground(draft, facts, limit)}
 
 
 def build_scenario(
@@ -305,6 +325,7 @@ def scenario_cache_path(
     prompt: str | None,
     facts: RepoFacts,
     cache_dir: Path = paths.CACHE,
+    limit: int = DEFAULT_STEPS,
 ) -> Path:
     """이 커밋·배포 URL·프롬프트·규칙 버전·분석 결과(facts)의 LLM 시나리오 캐시 파일.
 
@@ -312,7 +333,7 @@ def scenario_cache_path(
     """
     facts_key = hashlib.sha1(facts.to_json().encode()).hexdigest()[:12]
     prompt_key = normalize_prompt(prompt) or ""
-    raw_key = f"v{SCENARIO_VERSION}|{_base(base_url)}|{prompt_key}|{facts_key}"
+    raw_key = f"v{SCENARIO_VERSION}|{_base(base_url)}|{prompt_key}|{facts_key}|{limit}"
     key = hashlib.sha1(raw_key.encode()).hexdigest()[:8]
     return cache_dir / f"scenario__{snap.owner}__{snap.repo}__{snap.sha}__{key}.json"
 
@@ -326,17 +347,19 @@ def analyze(
     prompt: str | None = None,
     fetch: Callable[[str], RepoSnapshot] = fetch_repo,
     cache_dir: Path = paths.CACHE,
+    total_sec: float | None = None,
 ) -> dict:
     """프롬프트가 있으면 out_dir/prompt.txt 에도 남긴다 — scene 생성이 같은 요청을 쓴다."""
     prompt = normalize_prompt(prompt)
     snap = fetch(repo_url)
     facts = build_facts(snap)
-    cache = scenario_cache_path(snap, base_url, prompt, facts, cache_dir)
+    limit = step_limit(total_sec)
+    cache = scenario_cache_path(snap, base_url, prompt, facts, cache_dir, limit)
 
     if cache.exists():
         scenario = json.loads(cache.read_text())
     else:
-        scenario = scenario_from_llm(facts, base_url, llm, prompt) if llm else None
+        scenario = scenario_from_llm(facts, base_url, llm, prompt, limit) if llm else None
         if scenario is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(scenario, ensure_ascii=False))
@@ -348,4 +371,6 @@ def analyze(
     if prompt:
         (out_dir / "prompt.txt").write_text(prompt)
     (out_dir / "scenario.json").write_text(json.dumps(scenario, ensure_ascii=False, indent=2))
+    # 분석 직후 시나리오 — 캡처가 사용자 수정 여부를 비교해 자동 에이전트 녹화를 정한다
+    (out_dir / "scenario.analyzed.json").write_text(json.dumps(scenario, ensure_ascii=False))
     return scenario
