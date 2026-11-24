@@ -25,6 +25,14 @@ def _no_real_llm_keys(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_logo_download(monkeypatch):
+    """배포 사이트 로고 받기(app.logo)는 네트워크 — 테스트에서는 끈다(test_logo는 직접 부른다)."""
+    import app.pipeline
+
+    monkeypatch.setattr(app.pipeline, "save_logo", lambda run_dir: None)
+
+
 def make_snap(
     files: dict[str, str], extra_paths: list[str] | None = None, loader=None
 ) -> RepoSnapshot:

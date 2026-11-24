@@ -106,8 +106,8 @@ def test_wrong_caption_count_keeps_copy_and_pads_from_drafts(tmp_path):
     short = SceneCopy(title="T", subtitle="", captions=["a"], weights=[1], problem="정리가 늦어요")
     llm = FakeLLM(short)
     doc = build_scene(run, 60, False, llm)
-    assert len(llm.users) == 1 and doc["scenes"][0]["text"] == "T"
-    assert doc["scenes"][1]["text"] == "정리가 늦어요"
+    assert len(llm.users) == 1 and doc["scenes"][0]["text"] == "정리가 늦어요"
+    assert doc["scenes"][1]["text"] == "T를 사용한다면?"  # 문제 → 연결 → 시연 (11/24)
     screens = [s for s in doc["scenes"] if s["type"] == "screen"]
     assert [s.get("caption") for s in screens] == ["a", "검색 기능"]  # 2번째는 시나리오 초안
     assert "화면 2개" in llm.users[0]
@@ -161,7 +161,7 @@ def test_story_cards_from_copy(scenario, capture):
 
     card = {"type": "title"}
     problem = "회의록 정리는 늘 PM 몫"
-    assert scenes[1] == {
+    assert scenes[0] == {
         **card,
         "durationSec": _read_sec(problem),
         "text": problem,
@@ -243,8 +243,8 @@ def test_highlight_only_words_in_caption(scenario, capture):
 def test_cards_get_kicker(scenario, capture):
     copy = _copy(problem="회의록 정리는 늘 PM 몫", closing="회의만 하면 정리됩니다")
     scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
-    assert "kicker" not in scenes[0]
-    assert scenes[1]["kicker"] == "문제" and scenes[-1]["kicker"] == "정리"
+    assert [s.get("kicker") for s in scenes[:2]] == ["문제", "하지만"]  # 제목 슬라이드 없이
+    assert scenes[-1]["kicker"] == "정리"
     assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
 
 
@@ -301,8 +301,8 @@ def test_login_scenes_come_after_problem_card(scenario, capture):
     ]
     kinds = [(s["type"], s.get("kicker") or s.get("image")) for s in scenes]
     assert kinds[:4] == [
-        ("title", None),
         ("title", "문제"),
+        ("title", "하지만"),
         ("screen", "shots/login-1.png"),
         ("screen", "shots/login-2.png"),
     ]
@@ -339,7 +339,7 @@ def test_card_length_follows_text_length(scenario, capture):
         False,
         _copy(problem="임대인이 빈 상가에 맞는 업종을 판단하기 어려워요"),
     )
-    assert short["scenes"][1]["durationSec"] < long["scenes"][1]["durationSec"] <= 5
+    assert short["scenes"][0]["durationSec"] < long["scenes"][0]["durationSec"] <= 5
 
 
 def _pt(icon, text):
@@ -363,7 +363,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
         ],
     )
     scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
-    problem, solution = scenes[1], scenes[2]
+    problem, bridge = scenes[0], scenes[1]
     assert problem == {
         "type": "points",
         "durationSec": 7.4,  # 제목 1.4초 + 상황당 3초
@@ -374,16 +374,16 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
             {"icon": "alert", "text": "담당자가 흐려져요"},
         ],
     }
-    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 6.0, 3)
-    assert scenes[3]["type"] == "screen"
+    assert bridge["kicker"] == "하지만" and bridge["text"] == "T를 사용한다면?"
+    assert scenes[2]["type"] == "screen"  # 해결 카드 없이 바로 시연 (11/24)
     assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
 
 
 def test_single_point_falls_back_to_title_card(scenario, capture):
     copy = _copy(problem="정리가 늘 늦어요", problem_points=[_pt("clock", "하나뿐")])
     scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
-    assert scenes[1]["type"] == "title" and scenes[1]["kicker"] == "문제"
-    assert scenes[2]["type"] == "screen"  # solution 없으면 해결 장면도 없음
+    assert scenes[0]["type"] == "title" and scenes[0]["kicker"] == "문제"
+    assert scenes[2]["type"] == "screen"
 
 
 def test_check_rejects_long_point_text(tmp_path):
@@ -474,5 +474,15 @@ def test_llm_sets_intro_scene_lengths_within_range(scenario, capture):  # 11/24 
     copy = _copy(problem="막혀요", problem_points=pts, solution="풀어요", solution_points=pts)
     copy.problem_sec, copy.solution_sec = 9.0, 99.0
     scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
-    assert scenes[1]["durationSec"] == 9.0  # 범위 안이면 그대로
-    assert scenes[2]["durationSec"] == 3.0 + 2.0 * 2  # 너무 길면 항목당 2초까지
+    assert scenes[0]["durationSec"] == 9.0  # 범위 안이면 그대로
+    copy.problem_sec = 99.0
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
+    assert scenes[0]["durationSec"] == 1.4 + 4.5 * 2  # 너무 길면 상황당 4.5초까지
+
+
+def test_bridge_uses_right_particle():
+    from app.scene import bridge
+
+    assert bridge("CS 길라잡이")["text"] == "CS 길라잡이를 사용한다면?"
+    assert bridge("마켓핏")["text"] == "마켓핏을 사용한다면?"
+    assert bridge("CodePes")["text"] == "CodePes를 사용한다면?"

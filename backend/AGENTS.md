@@ -32,6 +32,7 @@
 | GET | `/api/runs/{id}/files/{path}` | — | run 디렉터리 파일(`shots/2.png`, `preview.mp4`). 밖 경로·없는 파일 → 404 |
 
 - `stage`: `created` → `analyzed` → (`queued` → `capturing` → `scening` → `rendering` → `done`) / 실패 시 `error` + `error` 메시지. 웹은 `done`·`error`가 될 때까지 `GET /api/runs/{id}`를 폴링한다(1~2초).
+- 영상 흐름(11/24): 문제 장면 → 연결 카드 "하지만 {서비스}를 사용한다면?"(`bridge`) → 시연 화면 → 마무리(closing: "{서비스}가 {문제}를 해결해요"). 문제를 못 찾으면 제목 슬라이드로 연다. 해결 카드는 만들지 않는다(시연이 해결). build/`cli scene` 전에 배포 사이트 로고를 run의 `logo.*`로 받는다(`app/logo.py`, 실패해도 계속).
 - 영상 길이: `totalSec`은 **최대 길이**다. scene 은 장면마다 내용만큼 길이를 잡는다(제목 4.5초, 카드는 글자 수로 3~5초, 화면은 녹화 구간 길이지만 최소 4.5초). 내용이 요청보다 짧으면 녹화가 있는 화면 장면만 장면당 7초까지 늘린다(`fill`, 카드는 그대로). `scene.totalSec = min(요청, 내용 합)`. 시나리오는 핵심 기능 3~5개만(기능당 1~3단계), 단계 수 상한은 요청 길이에 비례한다(`step_limit`: 10초에 1단계, 6~18, 캐시 키에 들어감 — `make warm`은 60·90·180초). 문제·해결 장면 길이는 scene LLM이 `problem_sec`·`solution_sec`로 정하고 코드가 항목 수에 맞는 범위로 자른다(문제 1.4+2.4~4.5초/상황, 해결 3+0.8~2초/항목). 문제 항목 text는 사람이 겪는 상황 문장(22자 이내)이고 렌더가 가상 인터넷 화면으로 그린다.
 - 캡처가 통째로 실패하면(사이트 응답 없음 등) 빈 capture.json으로 계속해 화면 없이(제목·문제·해결·정리 카드) 영상을 만들고 `stage: "done"` + `warning` 메시지를 남긴다. 다음 build 때 지워진다.
 - scene 안의 이미지 경로(`shots/2.png`)는 `/api/runs/{id}/files/` 뒤에 붙여 쓴다. 없는 run id → 404.

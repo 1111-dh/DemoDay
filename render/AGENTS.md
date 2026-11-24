@@ -7,5 +7,6 @@
 - 장면 컴포넌트는 **props(scene)만으로 결정적으로** 그린다. `Math.random`, `Date.now`, 네트워크 호출은 금지하고 애니메이션은 `useCurrentFrame`과 `interpolate`/`spring`으로 만든다.
 - 좌표(zoom, cursor)는 캡처 viewport 1280x720 기준 px이고, Composition도 1280x720이다.
 - 새 장면 type 추가 순서: (팀 합의) 스키마 → `make gen` → `src/scenes/XScene.tsx` → `Demo.tsx`의 switch에 case 추가 → fixture에 예시 추가 → `make check`. switch는 `never` 검사를 하므로 case를 빼먹으면 typecheck가 실패한다.
+- 계약 밖 렌더 전용 prop: `domain`(주소창), `logo`(backend `app/logo.py`가 배포 사이트에서 받은 run의 `logo.*` — `render.mjs`가 복사해 넘기고, 연결("하지만")·마무리("정리") 카드와 제목에 넣는다).
 - 공통 모션은 `src/motion.tsx`(움직이는 배경 `Backdrop`, 단어별로 올라오는 `Words`, 라벨 `Pill`). 화면 장면의 레이아웃(center·split·tilt·wide)과 카메라(다가가기·물러나기·훑기)는 화면 내용으로 고른다(`pickLayouts`: 클릭 → 클로즈업, 핵심 영역 → 3D 기울기, 둘러보기 → 넓게 훑기, 연달아 같은 연출 금지). 문제 장면은 `ProblemStory`가 아이콘별 가상 인터넷 화면(메신저·로딩·검색·대시보드·단톡방)으로 그린다(11/24 피드백).
 - 장면 전환은 `TransitionSeries`로 앞 장면과 0.3초 겹친다(`timing.ts`의 `overlapFrames`/`totalFrames`). 전체 길이는 겹친 만큼 줄어든다. 글꼴은 `public/fonts`의 Pretendard(OFL)를 `theme.ts`에서 `loadFont`로 불러온다 — 시스템 폰트 이름만 쓰지 않는다.

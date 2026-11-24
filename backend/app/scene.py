@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -103,6 +104,24 @@ def _points(heading: str, points: list[PointDraft], kicker: str, want: float = 0
     }
 
 
+BRIDGE_SEC = 3.2  # "하지만 …을 사용한다면?" — 문제에서 시연으로 넘어가는 한 박자
+BRIDGE_KICKER = "하지만"
+
+
+def _object_particle(name: str) -> str:
+    """이름 뒤 목적격 조사: 받침 있는 한글로 끝나면 '을', 아니면 '를'(영문 이름 포함)."""
+    last = name.strip()[-1:] or "x"
+    if "가" <= last <= "힣":
+        return "을" if (ord(last) - 0xAC00) % 28 else "를"
+    return "를"
+
+
+def bridge(name: str) -> dict:
+    name = name.strip()
+    text = f"{name}{_object_particle(name)} 사용한다면?"
+    return {"type": "title", "durationSec": BRIDGE_SEC, "kicker": BRIDGE_KICKER, "text": text}
+
+
 def _read_sec(text: str) -> float:
     """한 줄 문장을 읽을 시간: 1.8초 + 글자당 0.1초 (3~5초)."""
     return round(min(CARD_MAX, max(CARD_MIN, 1.8 + 0.1 * len(text))), 2)
@@ -146,6 +165,7 @@ def assemble(
     *,
     video: str | None = None,
     login_images: list[str] | None = None,
+    service_name: str | None = None,
 ) -> dict:
     """video = capture.video (녹화 파일), login_images = capture.login.images (입력칸 가림)."""
     step_caption = {s["id"]: s.get("caption", "") for s in scenario["steps"]}
@@ -153,17 +173,17 @@ def assemble(
     subtitle = copy.subtitle if copy else facts.summary
     if subtitle:
         title["subtitle"] = subtitle
-    scenes: list[dict] = [title]
+    # 영상 흐름(11/24): 문제 상황 → "하지만 {서비스}를 사용한다면?" → 시연
+    # → {서비스}가 문제를 해결한다는 마무리.
+    # 제목 슬라이드는 문제를 못 찾았을 때만 연다. 해결은 카드 대신 시연으로 바로 보여 준다.
+    scenes: list[dict] = []
     if copy and copy.problem.strip():
         problem = _points(copy.problem, copy.problem_points, "문제", copy.problem_sec)
         scenes.append(problem or _card(copy.problem.strip(), "문제"))
-    if (
-        copy
-        and copy.solution.strip()
-        and (solution := _points(copy.solution, copy.solution_points, "해결", copy.solution_sec))
-    ):
-        scenes.append(solution)
-    for j, image in enumerate(login_images or []):  # 문제 → (로그인) → 해결 화면
+        scenes.append(bridge(service_name or title["text"]))
+    else:
+        scenes.append(title)
+    for j, image in enumerate(login_images or []):  # 문제 → 연결 → (로그인) → 시연
         login: dict = {"type": "screen", "durationSec": LOGIN_SEC, "image": image}
         if j == len(login_images) - 1:
             login["caption"] = LOGIN_CAPTION
@@ -307,7 +327,16 @@ def build_scene(
     prompt = prompt_file.read_text() if prompt_file.exists() else None
     shots = keep_shots(capture["shots"])
     login = capture.get("login") or {}
-    media = {"video": capture.get("video"), "login_images": login.get("images")}
+    # 배포 사이트가 밝힌 서비스 이름(app/logo.py) — README 첫 제목은 슬로건인 경우가 많다
+    name_file = run_dir / "site_name.txt"
+    site = name_file.read_text().strip() if name_file.exists() else ""
+    if site:
+        facts = dataclasses.replace(facts, name=site)
+    media = {
+        "video": capture.get("video"),
+        "login_images": login.get("images"),
+        "service_name": site or None,
+    }
 
     def check(c: SceneCopy) -> list[str]:
         errors = []

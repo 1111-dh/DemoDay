@@ -191,12 +191,24 @@ def _capture_or_empty(rid: str, d: Path) -> None:
         runs.write_status(rid, warning=f"{SITE_DOWN} — {hint}")
 
 
+def save_logo(run_dir: Path) -> None:
+    """배포 사이트 로고를 run 에 받아 둔다(연결·마무리 장면용, 실패해도 계속)."""
+    from app.logo import fetch_logo
+
+    try:
+        base = json.loads((run_dir / "scenario.json").read_text())["baseUrl"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+    fetch_logo(base, run_dir)
+
+
 def build(rid: str, total_sec: float, include_architecture: bool) -> None:
     try:
         d = runs.run_dir(rid)
         runs.write_status(rid, stage="capturing", warning=None)
         _capture_or_empty(rid, d)
         runs.write_status(rid, stage="scening")
+        save_logo(d)
         build_scene(
             d, total_sec, include_architecture, llm.get_llm(), describer=vision.get_describer()
         )

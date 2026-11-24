@@ -173,9 +173,11 @@ def warm(file: str, agent: bool = False) -> int:
 
 def scene(run: str, total_sec: float, include_architecture: bool = False) -> None:
     from app.llm import get_llm
+    from app.pipeline import save_logo
     from app.scene import build_scene
     from app.vision import get_describer
 
+    save_logo(Path(run))
     doc = build_scene(
         Path(run), total_sec, include_architecture, get_llm(), describer=get_describer()
     )
