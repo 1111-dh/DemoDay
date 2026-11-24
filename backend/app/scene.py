@@ -104,6 +104,7 @@ def _points(heading: str, points: list[PointDraft], kicker: str, want: float = 0
     }
 
 
+ENDING_MIN = 3.5  # 엔딩 — 로고·이름이 뜬 뒤 문장을 읽을 시간
 BRIDGE_SEC = 3.2  # "하지만 …을 사용한다면?" — 문제에서 시연으로 넘어가는 한 박자
 BRIDGE_KICKER = "하지만"
 
@@ -221,7 +222,12 @@ def assemble(
         scenes.append(screen)
 
     if copy and copy.closing.strip():
-        scenes.append(_card(copy.closing.strip(), "정리"))
+        # 엔딩: [로고][서비스 이름] + 아래 "이제, ~하세요" 한 문장(11/24 피드백).
+        # 이름은 subtitle 로 — 렌더가 엔딩 배치로 그린다. 웹 편집기는 text(문장)를 고친다
+        ending = _card(copy.closing.strip(), "정리")
+        ending["durationSec"] = max(ENDING_MIN, ending["durationSec"])
+        ending["subtitle"] = (service_name or title["text"]).strip()
+        scenes.append(ending)
     arch = infer_architecture(facts) if include_architecture else None
     # 노드가 하나뿐이면(예: 'Nuxt') 보여줄 구조가 없다 — 한 단어 화면이 4초 이어지지 않게 뺀다
     if arch and len(arch["nodes"]) >= 2:

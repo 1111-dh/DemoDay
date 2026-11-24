@@ -101,6 +101,53 @@ const Rings: React.FC<{ letter: string; logo?: string }> = ({ letter, logo }) =>
 };
 
 /**
+ * 엔딩(kicker "정리" + subtitle=서비스 이름): [로고][서비스 이름]이 한 줄로 튀어 오르고,
+ * 아래에 "이제, ~하세요" 한 문장이 단어별로 올라온다(11/24 피드백 — 예: managers manager "이제, 회의에만 집중하세요").
+ * 로고가 없거나 깨지면 이름 첫 글자 배지.
+ */
+const Ending: React.FC<{ name: string; line: string; logo?: string; durationInFrames: number }> = ({ name, line, logo, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const brand = spring({ frame, fps, delay: 0.05 * fps, config: { damping: 14 } });
+  const nameIn = spring({ frame, fps, delay: 0.25 * fps, config: { damping: 200 } });
+  const words = line.split(/\s+/).length;
+  const underline = interpolate(frame, [(0.9 + words * 0.07) * fps, (1.5 + words * 0.07) * fps], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
+  const drift = interpolate(frame, [0, durationInFrames], [1, 1.03]);
+  const size = 112;
+  const letter = [...name.trim()][0] ?? "D";
+  const initial = (
+    <div style={{ width: size, height: size, borderRadius: size * 0.26, background: `linear-gradient(135deg, ${theme.accent}, #ff9a52)`, color: "white", fontSize: 60, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {letter}
+    </div>
+  );
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", textAlign: "center", padding: "0 120px", transform: `scale(${drift})` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 30, transform: `translateY(${interpolate(brand, [0, 1], [30, 0])}px)`, opacity: interpolate(brand, [0, 0.3], [0, 1], clamp) }}>
+        <div
+          style={{
+            width: size,
+            height: size,
+            borderRadius: size * 0.26,
+            background: "white",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.16)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            transform: `scale(${brand}) rotate(${interpolate(brand, [0, 1], [-12, 0])}deg)`,
+          }}
+        >
+          {logo ? <LogoImg src={logo} size={size * 0.72} fallback={initial} /> : initial}
+        </div>
+        <div style={{ fontSize: fitFont(name, 760, 96), fontWeight: 700, letterSpacing: "-0.04em", opacity: nameIn, transform: `translateX(${interpolate(nameIn, [0, 1], [-24, 0])}px)` }}>{name}</div>
+      </div>
+      <Words text={line} delay={0.75} stagger={0.08} style={{ marginTop: 46, fontSize: fitFont(line, 1000, 54), fontWeight: 600, color: theme.ink, letterSpacing: "-0.02em", justifyContent: "center", maxWidth: 1040 }} />
+      <div style={{ marginTop: 22, width: 200 * underline, height: 7, borderRadius: 4, background: `linear-gradient(90deg, ${theme.accent}, #ffb37a)` }} />
+    </AbsoluteFill>
+  );
+};
+
+/**
  * 오프닝 타이틀: 큰 서비스 이름이 단어별로 솟아오르고, 오른쪽에 선이 그려지는 원 장식.
  * kicker가 있으면 장 구분 카드(문제·정리): 라벨 알약 + 큰 문장 + 밑줄이 그어진다.
  * 장면 내내 아주 천천히 다가가 정지 화면처럼 보이지 않게 한다.
@@ -122,6 +169,15 @@ export const TitleScene: React.FC<Props> = ({ scene, durationInFrames, logo }) =
   const narrow = fitFont(scene.text, 600, 92);
   const roomy = narrow >= 60;
   const titleSize = roomy ? narrow : fitFont(scene.text, 1040, 92);
+
+  if (scene.kicker === "정리" && scene.subtitle) {
+    return (
+      <AbsoluteFill style={{ fontFamily: theme.font, color: theme.ink, ...theme.keepAll }}>
+        <Backdrop seed={2} />
+        <Ending name={scene.subtitle} line={scene.text} logo={logo} durationInFrames={durationInFrames} />
+      </AbsoluteFill>
+    );
+  }
 
   return (
     <AbsoluteFill style={{ fontFamily: theme.font, color: problem ? "white" : theme.ink, ...theme.keepAll }}>

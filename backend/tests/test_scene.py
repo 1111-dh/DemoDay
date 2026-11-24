@@ -170,9 +170,10 @@ def test_story_cards_from_copy(scenario, capture):
     closing = "회의만 하면 할 일이 정리됩니다"
     assert scenes[-2] == {
         **card,
-        "durationSec": _read_sec(closing),
+        "durationSec": max(3.5, _read_sec(closing)),
         "text": closing,
         "kicker": "정리",
+        "subtitle": "T",  # 엔딩: [로고][서비스 이름] + 문장 — 이름은 subtitle
     }
     assert scenes[-1]["type"] == "architecture"
 
@@ -486,3 +487,18 @@ def test_bridge_uses_right_particle():
     assert bridge("CS 길라잡이")["text"] == "CS 길라잡이를 사용한다면?"
     assert bridge("마켓핏")["text"] == "마켓핏을 사용한다면?"
     assert bridge("CodePes")["text"] == "CodePes를 사용한다면?"
+
+
+def test_ending_shows_site_name_over_closing_line(scenario, capture):
+    copy = _copy(problem="회의록 정리는 늘 PM 몫", closing="이제, 회의에만 집중하세요")
+    doc = assemble(
+        scenario, capture["shots"], FACTS, 60, False, copy, service_name="managers manager"
+    )
+    end = doc["scenes"][-1]
+    assert (end["kicker"], end["subtitle"], end["text"]) == (
+        "정리",
+        "managers manager",
+        "이제, 회의에만 집중하세요",
+    )
+    assert end["durationSec"] >= 3.5
+    assert schema_errors("scene", doc) == []
