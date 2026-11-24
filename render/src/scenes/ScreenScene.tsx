@@ -11,13 +11,30 @@ const BAR = 36;
 const RATE_MIN = 0.5;
 const RATE_MAX = 2;
 
-type Props = { scene: T; domain?: string; durationInFrames: number; index?: number; count?: number };
+type Props = { scene: T; domain?: string; durationInFrames: number; index?: number; count?: number; layout?: Layout };
 
-/** 화면마다 돌아가며 바뀌는 연출 — 같은 '보여주고 → 확대'가 반복되지 않게(11/24 피드백). */
-type Layout = "center" | "split" | "tilt" | "wide";
-const LAYOUTS: Layout[] = ["center", "split", "tilt", "wide"];
+/** 화면 연출. 화면 내용에 맞춰 고른다(pickLayouts) — 같은 '보여주고 → 확대'가 반복되지 않게(11/24 피드백). */
+export type Layout = "center" | "split" | "tilt" | "wide";
+
+/**
+ * 화면 장면마다 내용에 맞는 연출을 고른다(결정적).
+ * - 클릭·입력(cursor): 동작에 다가가는 클로즈업 — center, 연달아 나오면 split(왼쪽 큰 자막)
+ * - 핵심 영역(zoom만): 그 영역을 3D로 기울여 보여주는 tilt, 연달아면 center
+ * - 동작·핵심 영역 없음(둘러보기·스크롤): 꽉 찬 화면을 옆으로 훑는 wide, 연달아면 split
+ * - 첫 화면이 동작이 아니면 split — 큰 자막과 함께 물러나며 서비스 전체를 소개한다
+ */
+export function pickLayouts(screens: T[]): Layout[] {
+  const out: Layout[] = [];
+  screens.forEach((s, i) => {
+    const kind = s.cursor ? "act" : s.zoom ? "focus" : "view";
+    const options: Layout[] =
+      i === 0 && kind !== "act" ? ["split", "wide"] : kind === "act" ? ["center", "split"] : kind === "focus" ? ["tilt", "center"] : ["wide", "split"];
+    out.push(options.find((o) => o !== out[i - 1]) ?? options[0]);
+  });
+  return out;
+}
 /** 레이아웃별 카메라(클릭이 없는 화면): 다가가기 / 물러나며 전체 보여주기 / 옆으로 훑기 */
-const CAMERA: Record<Layout, "push" | "pull" | "pan"> = { center: "push", split: "pull", tilt: "pan", wide: "push" };
+const CAMERA: Record<Layout, "push" | "pull" | "pan"> = { center: "push", split: "pull", tilt: "push", wide: "pan" };
 /** 브라우저 카드 배율 */
 const SCALE: Record<Layout, number> = { center: 0.84, split: 0.64, tilt: 0.8, wide: 0.9 };
 type Media = { src: string; trimBefore: number; rate: number; playFrames: number };
@@ -39,13 +56,12 @@ function media(scene: T, sceneFrames: number, fps: number): Media | null {
 
 /**
  * 배경 위 브라우저 카드 + 커서 이동 → 클릭 하이라이트 → 카메라 + 자막. 좌표는 캡처 viewport(1280x720) 기준 px.
- * index(화면 순번)에 따라 레이아웃이 center → split(왼쪽 큰 자막) → tilt(3D 기울기) → wide(꽉 찬 화면)로 돈다.
+ * layout은 Demo가 pickLayouts로 화면 내용에 맞춰 정한다: center · split(왼쪽 큰 자막) · tilt(3D 기울기) · wide(꽉 찬 화면).
  */
-export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames, index = 0, count = 0 }) => {
+export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames, index = 0, count = 0, layout = "center" }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const m = media(scene, durationInFrames, fps);
-  const layout = LAYOUTS[index % LAYOUTS.length];
   const S = SCALE[layout];
   const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 0.7 * fps });
   const cardW = W * S;

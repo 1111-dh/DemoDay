@@ -6,19 +6,19 @@ import { slide } from "@remotion/transitions/slide";
 import type { Scene, SceneDoc } from "@demoday/contracts";
 import { fitFrames, overlapFrames, totalFrames } from "./timing";
 import { TitleScene } from "./scenes/TitleScene";
-import { ScreenScene } from "./scenes/ScreenScene";
+import { pickLayouts, ScreenScene, type Layout } from "./scenes/ScreenScene";
 import { ArchitectureScene } from "./scenes/ArchitectureScene";
 import { PointsScene } from "./scenes/PointsScene";
 import { theme } from "./theme";
 
 /** 장면 type → 컴포넌트. 새 장면 type은 스키마 → make gen → 여기 case 추가 순서로. */
 /** shot = 화면 장면 중 몇 번째인지(0부터), shots = 화면 장면 수 — 화면마다 연출을 바꾸는 데 쓴다. */
-function renderScene(scene: Scene, frames: number, domain: string | undefined, shot: number, shots: number) {
+function renderScene(scene: Scene, frames: number, domain: string | undefined, shot: number, shots: number, layouts: Layout[]) {
   switch (scene.type) {
     case "title":
       return <TitleScene scene={scene} durationInFrames={frames} />;
     case "screen":
-      return <ScreenScene scene={scene} domain={domain} durationInFrames={frames} index={shot} count={shots} />;
+      return <ScreenScene scene={scene} domain={domain} durationInFrames={frames} index={shot} count={shots} layout={layouts[shot]} />;
     case "architecture":
       return <ArchitectureScene scene={scene} />;
     case "points":
@@ -64,7 +64,9 @@ export const Demo: React.FC<DemoProps> = (doc) => {
   const frames = fitFrames(doc);
   const overlap = overlapFrames(doc, frames);
   const shotIndex = doc.scenes.map((_, i) => doc.scenes.slice(0, i).filter((s) => s.type === "screen").length);
-  const shots = doc.scenes.filter((s) => s.type === "screen").length;
+  const screens = doc.scenes.flatMap((s) => (s.type === "screen" ? [s] : []));
+  const shots = screens.length;
+  const layouts = pickLayouts(screens);
   return (
     <AbsoluteFill style={{ background: theme.bg }}>
       <TransitionSeries>
@@ -77,7 +79,7 @@ export const Demo: React.FC<DemoProps> = (doc) => {
               />
             )}
             <TransitionSeries.Sequence durationInFrames={frames[i]}>
-              {renderScene(scene, frames[i], doc.domain, shotIndex[i], shots)}
+              {renderScene(scene, frames[i], doc.domain, shotIndex[i], shots, layouts)}
             </TransitionSeries.Sequence>
           </Fragment>
         ))}

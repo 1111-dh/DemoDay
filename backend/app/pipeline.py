@@ -35,9 +35,30 @@ def _run(cmd: list[str], what: str, timeout: float, env: dict[str, str] | None =
 AGENT_CAPTURE_TIMEOUT = 600  # 에이전트 모드: 최대 10동작 × (판단 + 실행·녹화)
 
 
+AUTO_AGENT_BELOW = 4  # 코드 분석 시나리오가 이보다 짧으면 에이전트 녹화로 바꾼다
+
+
+def use_agent(run_dir: Path) -> bool:
+    """에이전트 녹화를 쓸지. CAPTURE_MODE=agent 면 항상, plan 이면 안 쓴다.
+
+    비어 있으면(auto) 코드 분석이 빈약할 때만 쓴다 — 라우터 없는 SPA처럼 처음 보는 레포도
+    실제 화면을 보고 눌러 보며 영상을 채운다(11/24). 판단 모델(BAZE) 키가 있어야 한다.
+    """
+    mode = os.environ.get("CAPTURE_MODE", "").strip().lower()
+    if mode in ("agent", "plan"):
+        return mode == "agent"
+    if not os.environ.get("BAZE_API_KEY"):
+        return False
+    try:
+        steps = json.loads((run_dir / "scenario.json").read_text())["steps"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return len(steps) < AUTO_AGENT_BELOW
+
+
 def agent_capture(run_dir: Path) -> tuple[list[str], dict[str, str] | None]:
-    """CAPTURE_MODE=agent 면 캡처에 넘길 인자(--agent --goal)와 에이전트 환경변수(#53)."""
-    if os.environ.get("CAPTURE_MODE", "").strip().lower() != "agent":
+    """에이전트 녹화(use_agent)면 캡처에 넘길 인자(--agent --goal)와 에이전트 환경변수(#53)."""
+    if not use_agent(run_dir):
         return [], None
     from app.agent import goal_for
     from app.analyze.facts import RepoFacts

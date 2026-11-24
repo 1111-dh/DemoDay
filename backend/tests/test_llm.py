@@ -294,11 +294,11 @@ def test_get_llm_picks_baze_with_groq_backup(monkeypatch):
     monkeypatch.delenv("BAZE_MODEL", raising=False)
     llm = get_llm()
     assert isinstance(llm, FallbackLLM)
-    assert llm.primary.model == "claude-haiku-5-5" and llm.primary.strict
+    assert llm.primary.model == "claude-sonnet-5-5" and llm.primary.strict  # 글쓰기는 Sonnet
     assert isinstance(llm.backup, OpenAICompatLLM) and "groq" in llm.backup.url
     monkeypatch.delenv("GROQ_API_KEY")
     only = get_llm()
-    assert isinstance(only, OpenAICompatLLM) and only.model == "claude-haiku-5-5"
+    assert isinstance(only, OpenAICompatLLM) and only.model == "claude-sonnet-5-5"
     monkeypatch.delenv("BAZE_API_KEY")
     assert get_llm() is None
 

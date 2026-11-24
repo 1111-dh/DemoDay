@@ -39,7 +39,12 @@ SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 
 MAX_POINT = 16  # points 항목 — 모션 그래픽용 짧은 키워드(프롬프트는 12자, 여유 4자)
-POINTS_BASE, POINT_SEC = 3.0, 1.0  # points 장면 길이: 3초 + 항목당 1초
+MAX_SITUATION = 22  # 문제 항목 — 사람이 겪는 상황 한 문장(프롬프트는 18자, 여유 4자)
+POINTS_BASE, POINT_SEC = (
+    2.2,
+    0.8,
+)  # 해결 장면 길이: 2.2초 + 항목당 0.8초 (11/24 길게 늘인 느낌 → 줄임)
+STORY_BASE, STORY_SEC = 1.4, 2.4  # 문제 장면: 제목 1.4초 + 상황 하나당 2.4초 (render ProblemStory)
 
 
 class PointDraft(BaseModel):
@@ -78,7 +83,8 @@ def _points(heading: str, points: list[PointDraft], kicker: str) -> dict | None:
     items = [{"icon": str(p.icon), "text": p.text.strip()} for p in points if p.text.strip()][:4]
     if len(items) < 2:
         return None
-    sec = POINTS_BASE + POINT_SEC * len(items)
+    base, each = (STORY_BASE, STORY_SEC) if kicker == "문제" else (POINTS_BASE, POINT_SEC)
+    sec = round(base + each * len(items), 2)
     return {
         "type": "points",
         "durationSec": sec,
@@ -305,12 +311,12 @@ def build_scene(
             errors.append(f"weights는 {W_MIN}~{W_MAX}")
         if max(len(c.problem), len(c.closing), len(c.solution)) > MAX_CARD:
             errors.append(f"problem·solution·closing은 {MAX_CARD}자 이하")
-        for name, pts in (
-            ("problem_points", c.problem_points),
-            ("solution_points", c.solution_points),
+        for name, pts, most in (
+            ("problem_points", c.problem_points, MAX_SITUATION),
+            ("solution_points", c.solution_points, MAX_POINT),
         ):
-            if len(pts) > 4 or any(len(p.text) > MAX_POINT for p in pts):
-                errors.append(f"{name}는 4개 이하, 항목당 {MAX_POINT}자 이하")
+            if len(pts) > 4 or any(len(p.text) > most for p in pts):
+                errors.append(f"{name}는 4개 이하, 항목당 {most}자 이하")
         return errors
 
     copy = None

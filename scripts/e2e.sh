@@ -23,11 +23,11 @@ stage() {  # stage <이름> <검증할 파일|-> <명령...>
 }
 
 stage analyze "$RUN/scenario.json" \
-  bash -c 'cd "$1/backend" && uv run python -m app.cli analyze --repo "$2" --url "$3" --out "$4/scenario.json" ${5:+--auth "$5"} ${6:+--prompt "$6"}' _ "$ROOT" "$REPO" "$URL" "$RUN" "$AUTH_ABS" "$PROMPT"
-# 에이전트 녹화 모드(#53): CAPTURE_MODE=agent make e2e … — 화면을 보고 고른 동작으로 녹화
+  bash -c 'cd "$1/backend" && uv run python -m app.cli analyze --repo "$2" --url "$3" --out "$4/scenario.json" ${5:+--auth "$5"} ${6:+--prompt "$6"} --total-sec "$7"' _ "$ROOT" "$REPO" "$URL" "$RUN" "$AUTH_ABS" "$PROMPT" "$SEC"
+# 에이전트 녹화(#53): CAPTURE_MODE=agent 면 항상, 비어 있으면 코드 분석이 빈약할 때만(4단계 미만), plan 이면 안 씀
 AGENT_ARGS=()
-if [ "${CAPTURE_MODE:-}" = agent ]; then
-  GOAL=$(cd "$ROOT/backend" && uv run python -m app.cli goal --run "$RUN")
+GOAL=$(cd "$ROOT/backend" && uv run python -m app.cli goal --run "$RUN" --auto)
+if [ -n "$GOAL" ]; then
   export DEMODAY_RUN_DIR="$RUN"  # 에이전트 명령은 캡처 기본값(Windows 호환, #70)
   AGENT_ARGS=(--agent --goal "$GOAL")
   echo "  에이전트 목표: $GOAL"

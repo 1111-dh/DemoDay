@@ -178,11 +178,11 @@ def _warm_agent(monkeypatch, tmp_path, agent_ran: bool):
             )
         )
         from app.analyze.facts import RepoFacts
-        from app.scenario import scenario_cache_path
+        from app.scenario import scenario_cache_path, step_limit
 
         facts = RepoFacts.from_json((out_dir / "facts.json").read_text())
         snap = RepoSnapshot(owner="o", repo="r", sha="s")
-        cache = scenario_cache_path(snap, url, None, facts, paths.CACHE)
+        cache = scenario_cache_path(snap, url, None, facts, paths.CACHE, step_limit(60))
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(GOOD))
         (out_dir / "scenario.json").write_text(json.dumps(GOOD))

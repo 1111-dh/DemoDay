@@ -23,6 +23,8 @@ from app import paths
 from app.contracts import schema_errors
 from app.github import RepoError
 
+WARM_SEC = 60  # 웹 기본 영상 길이 — 시연 캐시는 이 길이의 단계 수로 만든다(캐시 키에 들어간다)
+
 
 class ContractError(Exception):
     def __init__(self, errors: list[str]):
@@ -30,13 +32,20 @@ class ContractError(Exception):
 
 
 def analyze(
-    repo: str, url: str, out: str, auth_file: str | None = None, prompt: str | None = None
+    repo: str,
+    url: str,
+    out: str,
+    auth_file: str | None = None,
+    prompt: str | None = None,
+    total_sec: float | None = None,
 ) -> None:
     from app.llm import get_llm
     from app.scenario import analyze as run_analyze
 
     out_path = Path(out)
-    scenario = run_analyze(repo, url, out_path.parent, get_llm(), prompt=prompt)
+    scenario = run_analyze(
+        repo, url, out_path.parent, get_llm(), prompt=prompt, total_sec=total_sec
+    )
     if auth_file:  # 캡처 전 로그인 — LLM·캐시를 거친 뒤에 붙인다
         scenario = {**scenario, "auth": json.loads(Path(auth_file).read_text())}
     if errors := schema_errors("scenario", scenario):
@@ -65,7 +74,7 @@ def _warm_agent(run_dir: Path, snap, sample: dict, facts) -> str:
     import os
 
     from app import pipeline
-    from app.scenario import scenario_cache_path
+    from app.scenario import scenario_cache_path, step_limit
 
     before = os.environ.get("CAPTURE_MODE")
     os.environ["CAPTURE_MODE"] = "agent"
@@ -87,7 +96,10 @@ def _warm_agent(run_dir: Path, snap, sample: dict, facts) -> str:
             step["selector"] = _replayable(sel)
     if errors := schema_errors("scenario", done):
         return f" (에이전트 결과 계약 위반 — 계획 유지: {errors[0]})"
-    cache = scenario_cache_path(snap, sample["url"], sample.get("prompt"), facts, paths.CACHE)
+    limit = step_limit(WARM_SEC)
+    cache = scenario_cache_path(
+        snap, sample["url"], sample.get("prompt"), facts, paths.CACHE, limit
+    )
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(done, ensure_ascii=False))
     return f", 에이전트 {len(done['steps'])}동작 캐시됨"
@@ -106,7 +118,7 @@ def warm(file: str, agent: bool = False) -> int:
     from app.analyze.facts import RepoFacts
     from app.llm import get_llm
     from app.scenario import analyze as run_analyze
-    from app.scenario import scenario_cache_path
+    from app.scenario import scenario_cache_path, step_limit
 
     samples = json.loads(Path(file).read_text())
     snaps: list[github.RepoSnapshot] = []  # 분석이 쓴 스냅샷 (커밋 sha 확인용)
@@ -121,7 +133,13 @@ def warm(file: str, agent: bool = False) -> int:
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 scenario = run_analyze(
-                    s["repo"], s["url"], Path(tmp), get_llm(), prompt=s.get("prompt"), fetch=fetch
+                    s["repo"],
+                    s["url"],
+                    Path(tmp),
+                    get_llm(),
+                    prompt=s.get("prompt"),
+                    fetch=fetch,
+                    total_sec=WARM_SEC,
                 )
                 facts = RepoFacts.from_json((Path(tmp) / "facts.json").read_text())
                 agent_note = _warm_agent(Path(tmp), snaps[-1], s, facts) if agent else ""
@@ -130,7 +148,9 @@ def warm(file: str, agent: bool = False) -> int:
             print(f"✗ {s['repo']} — {e}")
             continue
         snap = snaps[-1]  # 지금 커밋의 시나리오 캐시가 있어야 시연 때 LLM 없이 즉시 나온다
-        cache = scenario_cache_path(snap, s["url"], s.get("prompt"), facts, paths.CACHE)
+        cache = scenario_cache_path(
+            snap, s["url"], s.get("prompt"), facts, paths.CACHE, step_limit(WARM_SEC)
+        )
         llm_made = cache.exists()
         kind = "LLM 시나리오 캐시됨" if llm_made else "규칙 기본값 (LLM 키 확인)"
         took = time.monotonic() - start
@@ -173,12 +193,14 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--out", required=True)
     a.add_argument("--auth", help="scenario.auth JSON 파일 (캡처 전 로그인 단계)")
     a.add_argument("--prompt", help="영상에 바라는 점 (화면 순서·자막 말투·강조, 500자)")
+    a.add_argument("--total-sec", type=float, help="영상 길이 — 시나리오 단계 수 상한(6초에 1단계)")
     s = sub.add_parser("scene")
     s.add_argument("--run", required=True)
     s.add_argument("--total-sec", type=float, default=60)
     s.add_argument("--architecture", action="store_true", help="마지막에 아키텍처 장면 넣기")
     g = sub.add_parser("goal", help="에이전트 녹화 목표 한 줄 (CAPTURE_MODE=agent)")
     g.add_argument("--run", required=True)
+    g.add_argument("--auto", action="store_true", help="코드 분석이 빈약할 때만 목표 출력")
     f = sub.add_parser("facts")
     f.add_argument("--repo", required=True)
     w = sub.add_parser("warm", help="시연 레포 분석 캐시 채우기")
@@ -187,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         if args.cmd == "analyze":
-            analyze(args.repo, args.url, args.out, args.auth, args.prompt)
+            analyze(args.repo, args.url, args.out, args.auth, args.prompt, args.total_sec)
         elif args.cmd == "facts":
             facts(args.repo)
         elif args.cmd == "warm":
@@ -195,8 +217,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "goal":
             from app.pipeline import agent_capture
 
-            os.environ["CAPTURE_MODE"] = "agent"
-            print(agent_capture(Path(args.run))[0][2])
+            if not args.auto:
+                os.environ["CAPTURE_MODE"] = "agent"
+            extra = agent_capture(Path(args.run))[0]
+            print(extra[2] if extra else "")  # auto 인데 에이전트가 필요 없으면 빈 줄
         else:
             scene(args.run, args.total_sec, args.architecture)
     except (RepoError, ContractError) as e:

@@ -366,7 +366,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
     problem, solution = scenes[1], scenes[2]
     assert problem == {
         "type": "points",
-        "durationSec": 5.0,  # 3초 + 항목당 1초
+        "durationSec": 6.2,  # 제목 1.4초 + 상황당 2.4초
         "kicker": "문제",
         "heading": "회의 정리는 늘 PM 몫이에요",
         "items": [
@@ -374,7 +374,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
             {"icon": "alert", "text": "담당자가 흐려져요"},
         ],
     }
-    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 6.0, 3)
+    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 4.6, 3)
     assert scenes[3]["type"] == "screen"
     assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
 
