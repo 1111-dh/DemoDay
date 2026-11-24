@@ -150,7 +150,17 @@ make warm AGENT=1  # 에이전트로 한 번 녹화해 고른 동작을 캐시(�
 2. API 실행: `cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`
 3. 웹(`web/`)은 배포 환경변수에 `DEMODAY_API_URL=<API 주소>`만 넣으면 됩니다. 웹 서버가 `/api/runs/*`를 API로 넘겨 CORS 설정이 필요 없어요.
 
-해커톤 기간에는 API를 노트북에서 돌리고 [Cloudflare 무료 터널](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)로 공개했습니다. 터널을 다시 켜면 주소가 바뀌니 웹의 `DEMODAY_API_URL`도 바꿔야 해요. 자동 배포는 없습니다.
+**현재 운영 구성**
+
+| | 위치 | 비고 |
+|---|---|---|
+| 웹 | Vercel — [demoday-topaz.vercel.app](https://demoday-topaz.vercel.app/) | Production 환경변수 `DEMODAY_API_URL`로 API에 연결 |
+| API | Oracle Cloud 서버 (상시 실행) | 분석·녹화·렌더 전부. 시연 레포 캐시(`make warm AGENT=1`)를 채워 둠 |
+
+처음에는 노트북에서 API를 돌리고 [Cloudflare 무료 터널](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)로 공개했지만, 노트북이 꺼지면 끊겨서 Oracle 서버로 옮겼어요([#69](https://github.com/1111-dh/DemoDay/issues/69)).
+
+> [!NOTE]
+> 자동 배포는 없습니다. main에 머지된 변경은 서버에서 `git pull` 후 API를 다시 시작해야 반영돼요(웹은 Vercel이 main 기준으로 배포).
 
 </details>
 
