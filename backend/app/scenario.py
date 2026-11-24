@@ -22,13 +22,13 @@ from app.contracts import schema_errors
 from app.github import RepoSnapshot, fetch_repo
 from app.llm import LLM, generate
 
-MAX_STEPS = 30  # 안전 상한 — 실제 상한은 요청 길이에 비례(step_limit)
+MAX_STEPS = 18  # 안전 상한 — 실제 상한은 요청 길이에 비례(step_limit)
 DEFAULT_STEPS = 12  # 길이를 모를 때(CLI·테스트)
-SEC_PER_STEP = 6  # 화면 하나 ≈ 6초 — 단계가 너무 많으면 렌더가 압축해 빨라진다(11/24 피드백)
+SEC_PER_STEP = 10  # 핵심 기능만 — 26단계는 '모든 기능을 다 보여 주는' 느낌(11/24 피드백)
 MAX_SCROLLS = 2  # 같은 화면에서 이어지는 스크롤 (긴 랜딩 페이지)
 MAX_PROMPT = 500
 README_FOR_SCENARIO = 1200  # 시나리오 LLM 에 보내는 README 본문 (토큰 한도)
-SCENARIO_VERSION = 14  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
+SCENARIO_VERSION = 15  # 시나리오 규칙이 바뀌면 올린다 — 이전 캐시를 쓰지 않게 (make warm 다시)
 MIN_STEPS = 5
 DEFAULT_PAGES = 6
 SYSTEM = (Path(__file__).parent / "prompts" / "scenario.md").read_text()
@@ -229,7 +229,7 @@ def ground(draft: ScenarioDraft, facts: RepoFacts, limit: int = DEFAULT_STEPS) -
 
 
 def step_limit(total_sec: float | None) -> int:
-    """요청 영상 길이에 맞는 최대 단계 수: 6초에 1단계(최소 6, 최대 MAX_STEPS).
+    """요청 영상 길이에 맞는 최대 단계 수: 10초에 1단계(최소 6, 최대 MAX_STEPS).
 
     고정 상한 대신(11/24) — 길이보다 단계가 많으면 렌더가 장면을 압축해 빨라진다.
     """
@@ -278,8 +278,8 @@ def _user_message(facts: RepoFacts, prompt: str | None = None, limit: int = DEFA
         "pages": pages,
     }
     user = "RepoFacts:\n" + json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    user += f"\n\n최대 {limit}단계 — 이 안에서 서비스의 기능을 빠짐없이 보여 준다"
-    user += "(같은 화면·동작 반복 금지)."
+    user += f"\n\n최대 {limit}단계 — 핵심 기능만 골라 보여 준다"
+    user += "(단순 이동·되돌리기·같은 화면 반복 금지)."
     return with_reference(user, prompt, "화면 순서와 보여줄 기능에만 반영한다")
 
 

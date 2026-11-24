@@ -366,7 +366,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
     problem, solution = scenes[1], scenes[2]
     assert problem == {
         "type": "points",
-        "durationSec": 6.2,  # 제목 1.4초 + 상황당 2.4초
+        "durationSec": 7.4,  # 제목 1.4초 + 상황당 3초
         "kicker": "문제",
         "heading": "회의 정리는 늘 PM 몫이에요",
         "items": [
@@ -374,7 +374,7 @@ def test_problem_and_solution_points_scenes(scenario, capture):  # 소개 그래
             {"icon": "alert", "text": "담당자가 흐려져요"},
         ],
     }
-    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 4.6, 3)
+    assert (solution["kicker"], solution["durationSec"], len(solution["items"])) == ("해결", 6.0, 3)
     assert scenes[3]["type"] == "screen"
     assert schema_errors("scene", {"fps": 30, "totalSec": 60, "scenes": scenes}) == []
 
@@ -467,3 +467,12 @@ def test_fill_stretches_only_recorded_screens(scenario):
     assert filled["totalSec"] == title_sec + 14
     short = fill(doc, 12)
     assert short["totalSec"] == 12 and schema_errors("scene", short) == []
+
+
+def test_llm_sets_intro_scene_lengths_within_range(scenario, capture):  # 11/24 길이를 LLM이 정한다
+    pts = [_pt("clock", "기다려요"), _pt("search", "헤매요")]
+    copy = _copy(problem="막혀요", problem_points=pts, solution="풀어요", solution_points=pts)
+    copy.problem_sec, copy.solution_sec = 9.0, 99.0
+    scenes = assemble(scenario, capture["shots"], FACTS, 60, False, copy)["scenes"]
+    assert scenes[1]["durationSec"] == 9.0  # 범위 안이면 그대로
+    assert scenes[2]["durationSec"] == 3.0 + 2.0 * 2  # 너무 길면 항목당 2초까지

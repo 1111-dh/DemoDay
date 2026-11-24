@@ -533,5 +533,5 @@ def test_step_limit_follows_requested_length():
 
     assert step_limit(None) == 12
     assert step_limit(30) == 6  # 최소
-    assert (step_limit(60), step_limit(120), step_limit(180)) == (10, 20, 30)
-    assert step_limit(600) == 30  # 안전 상한
+    assert (step_limit(60), step_limit(120), step_limit(180)) == (6, 12, 18)
+    assert step_limit(600) == 18  # 안전 상한

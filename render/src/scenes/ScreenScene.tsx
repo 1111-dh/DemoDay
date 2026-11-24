@@ -72,7 +72,8 @@ export const ScreenScene: React.FC<Props> = ({ scene, domain, durationInFrames, 
   const transform = {
     center: `translateY(${interpolate(enter, [0, 1], [40, 0])}px) scale(${interpolate(enter, [0, 1], [0.96, 1])})`,
     split: `translateX(${interpolate(enter, [0, 1], [120, 0])}px)`,
-    tilt: `perspective(1800px) rotateY(${interpolate(enter, [0, 1], [-28, -9]) + tilt * 5}deg) rotateX(${interpolate(enter, [0, 1], [10, 4])}deg) translateX(${interpolate(enter, [0, 1], [60, 0])}px)`,
+    // 3D는 살짝만 — 크게 기울이면 화면 글자가 비뚤어져 어색하다(11/24). 장면 동안 정면으로 천천히 돌아온다
+    tilt: `perspective(2400px) rotateY(${interpolate(enter, [0, 1], [-12, -5]) + tilt * 4}deg) rotateX(${interpolate(enter, [0, 1], [4, 2]) - tilt * 2}deg) translateX(${interpolate(enter, [0, 1], [40, 0])}px)`,
     wide: `scale(${interpolate(enter, [0, 1], [1.06, 1])})`,
   }[layout];
   const step = count > 1 ? `${String(index + 1).padStart(2, "0")}` : undefined;
@@ -252,7 +253,7 @@ function emphasize(text: string, words: string[] = []) {
 const Caption: React.FC<{ text: string; highlight?: string[]; step?: string; place: "left" | "right" | "middle" }> = ({ text, highlight, step, place }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const p = spring({ frame, fps, delay: 0.3 * fps, config: { damping: 18, mass: 0.7 } });
+  const p = spring({ frame, fps, delay: 0.12 * fps, config: { damping: 200 }, durationInFrames: 0.45 * fps });
   const pos: React.CSSProperties =
     place === "middle" ? { left: "50%", bottom: 34 } : place === "right" ? { right: 56, bottom: 34 } : { left: 56, bottom: 34 };
   return (

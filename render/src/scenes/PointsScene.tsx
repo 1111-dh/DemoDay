@@ -85,7 +85,9 @@ const SolutionCards: React.FC<Props> = ({ scene, durationInFrames }) => {
   const color = problem ? theme.red : theme.accent;
   const settle = 0.5 + 0.14 * n; // 카드가 다 들어오는 시각
   const line = interpolate(frame, [t(settle), t(settle + 0.6)], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
-  const sweepX = interpolate(frame, [t(settle + 1.0), t(settle + 2.0)], [left0 - 200, left0 + rowW + 200], clamp);
+  // 빛은 카드가 다 뜬 뒤 2.6초마다 다시 훑는다 — 장면이 길어져도 멈춰 보이지 않게
+  const cycle = Math.max(0, frame - t(settle + 1.0)) % t(2.6);
+  const sweepX = frame < t(settle + 1.0) ? left0 - 200 : interpolate(cycle, [0, t(1.0)], [left0 - 200, left0 + rowW + 200], clamp);
   const drift = interpolate(frame, [0, durationInFrames], [1, 1.035]);
 
   return (

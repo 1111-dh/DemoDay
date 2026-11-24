@@ -40,11 +40,11 @@ SYSTEM = (Path(__file__).parent / "prompts" / "scene.md").read_text()
 
 MAX_POINT = 16  # points 항목 — 모션 그래픽용 짧은 키워드(프롬프트는 12자, 여유 4자)
 MAX_SITUATION = 22  # 문제 항목 — 사람이 겪는 상황 한 문장(프롬프트는 18자, 여유 4자)
-POINTS_BASE, POINT_SEC = (
-    2.2,
-    0.8,
-)  # 해결 장면 길이: 2.2초 + 항목당 0.8초 (11/24 길게 늘인 느낌 → 줄임)
-STORY_BASE, STORY_SEC = 1.4, 2.4  # 문제 장면: 제목 1.4초 + 상황 하나당 2.4초 (render ProblemStory)
+# 해결 장면 기본: 3초 + 항목당 1초 / 문제 장면 기본: 제목 1.4초 + 상황당 3초 (render ProblemStory)
+POINTS_BASE, POINT_SEC = 3.0, 1.0
+STORY_BASE, STORY_SEC = 1.4, 3.0
+# LLM이 problem_sec·solution_sec로 정하는 길이의 항목당 범위(초)
+STORY_RANGE, POINTS_RANGE = (2.4, 4.5), (0.8, 2.0)
 
 
 class PointDraft(BaseModel):
@@ -63,6 +63,8 @@ class SceneCopy(BaseModel):
     solution: str = ""  # 해결 한 줄 제목
     solution_points: list[PointDraft] = []  # 핵심 기능 2~4개 → points 장면 (없으면 생략)
     closing: str = ""  # 서비스 가치 한 문장 (없으면 카드 없음)
+    problem_sec: float = 0  # 문제 장면 길이(초) — LLM이 상황 무게를 보고 정한다(0이면 기본값)
+    solution_sec: float = 0  # 해결 장면 길이(초)
 
 
 def _clamp(w: float) -> float:
@@ -78,13 +80,20 @@ def keep_shots(shots: list[dict]) -> list[dict]:
     return ok or shots[:1]
 
 
-def _points(heading: str, points: list[PointDraft], kicker: str) -> dict | None:
-    """문제·해결 아이콘 카드 장면. 항목이 2개 미만이면 None (호출부가 카드로 대신)."""
+def _points(heading: str, points: list[PointDraft], kicker: str, want: float = 0) -> dict | None:
+    """문제·해결 장면. 항목이 2개 미만이면 None (호출부가 카드로 대신).
+
+    want(초)는 LLM이 내용을 보고 정한 길이 — 항목 수에 맞는 범위로 자르고, 0이면 기본값.
+    """
     items = [{"icon": str(p.icon), "text": p.text.strip()} for p in points if p.text.strip()][:4]
     if len(items) < 2:
         return None
-    base, each = (STORY_BASE, STORY_SEC) if kicker == "문제" else (POINTS_BASE, POINT_SEC)
-    sec = round(base + each * len(items), 2)
+    problem = kicker == "문제"
+    base, each = (STORY_BASE, STORY_SEC) if problem else (POINTS_BASE, POINT_SEC)
+    lo, hi = STORY_RANGE if problem else POINTS_RANGE
+    n = len(items)
+    least, most = base + lo * n, base + hi * n
+    sec = round(min(most, max(least, want)) if want > 0 else base + each * n, 2)
     return {
         "type": "points",
         "durationSec": sec,
@@ -146,12 +155,12 @@ def assemble(
         title["subtitle"] = subtitle
     scenes: list[dict] = [title]
     if copy and copy.problem.strip():
-        problem = _points(copy.problem, copy.problem_points, "문제")
+        problem = _points(copy.problem, copy.problem_points, "문제", copy.problem_sec)
         scenes.append(problem or _card(copy.problem.strip(), "문제"))
     if (
         copy
         and copy.solution.strip()
-        and (solution := _points(copy.solution, copy.solution_points, "해결"))
+        and (solution := _points(copy.solution, copy.solution_points, "해결", copy.solution_sec))
     ):
         scenes.append(solution)
     for j, image in enumerate(login_images or []):  # 문제 → (로그인) → 해결 화면
