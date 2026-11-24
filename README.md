@@ -18,6 +18,14 @@ GitHub 레포와 배포 URL만 넣으면 실제 서비스 화면을 녹화해<br
 ![Remotion](https://img.shields.io/badge/Remotion_4-0B84F3?logo=remotion&logoColor=white)
 ![Claude](https://img.shields.io/badge/Claude_Sonnet_·_Haiku_5.5-D97757?logo=anthropic&logoColor=white)
 
+## 데모 영상
+
+> 아래 영상은 **DemoDay로 만든 DemoDay 소개 영상**이에요. 이 레포 주소와 배포 URL을 우리 서비스에 넣고, 사람 손을 거치지 않고 그대로 만들었어요.
+
+https://github.com/user-attachments/assets/013dba94-d571-42fc-b19a-a999d513faa8
+
+<sub>문제 상황 → 레포·URL 입력 → 시나리오 확인 → 영상 제작 → 완성까지, 촬영 순서와 자막·모션 그래픽 모두 DemoDay가 정했습니다.</sub>
+
 [사용법](#사용법) · [주요 기능](#주요-기능) · [동작 방식](#동작-방식) · [기술 스택](#기술-스택) · [직접 실행하기](#직접-실행하기)
 
 <sub>2026 경북대학교 컴퓨터학부 해커톤</sub>
